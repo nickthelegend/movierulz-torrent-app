@@ -58,6 +58,10 @@ export default function DownloadsScreen() {
     ])
   }
 
+  const handleShowFiles = (downloadId) => {
+    router.push(`/file-list?downloadId=${downloadId}`)
+  }
+
   const renderDownloadItem = ({ item, index }) => (
     <Animated.View entering={FadeInDown.delay(index * 100).springify()} style={styles.downloadItem}>
       <View style={styles.downloadHeader}>
@@ -116,10 +120,35 @@ export default function DownloadsScreen() {
           </TouchableOpacity>
         ) : null}
 
+        {/* Show Files Button - Available for all downloads with a location */}
+        {item.location && (
+          <TouchableOpacity style={styles.actionButton} onPress={() => handleShowFiles(item._id)}>
+            <LinearGradient
+              colors={["#6a11cb", "#2575fc"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.actionButtonGradient}
+            >
+              <Ionicons name="folder-open" size={18} color="white" style={styles.actionIcon} />
+              <ThemedText style={styles.actionText}>Show Files</ThemedText>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+
         {item.status === "COMPLETED" && (
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push(`/(movies)/video-player?id=${item._id.split("_")[1]}`)}
+            onPress={() => {
+              // Extract movie ID from the download name or metadata
+              // Assuming the movie ID is stored in the download source or can be extracted from the ID
+              const movieId = item.source.includes("id=")
+                ? item.source.split("id=")[1].split("&")[0]
+                : item._id.includes("_")
+                  ? item._id.split("_")[1]
+                  : "1" // Default to first movie if ID can't be extracted
+
+              router.push(`/(movies)/video-player?id=${movieId}`)
+            }}
           >
             <LinearGradient
               colors={["#6a11cb", "#2575fc"]}
@@ -347,15 +376,18 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: 10,
   },
   actionButton: {
     borderRadius: 20,
     overflow: "hidden",
-    marginLeft: 10,
+    minWidth: 100,
   },
   actionButtonGradient: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 8,
     paddingHorizontal: 12,
   },

@@ -22,11 +22,13 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated"
 import { Ionicons } from "@expo/vector-icons"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import AsyncStorage from "@react-native-async-storage/async-storage"
 
 import { ThemedText } from "@/components/ThemedText"
 import DownloadManager from "@/utils/downloadManager"
 import { useDownload } from "@/utils/useDownloadManager"
+import type { DownloadModel } from "@/utils/downloadManager"
 
 const { TorrentModule } = NativeModules
 
@@ -140,9 +142,47 @@ export default function MovieDetailScreen() {
   const buttonScale = useSharedValue(1)
   const [downloadId, setDownloadId] = useState("")
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isCheckingDownload, setIsCheckingDownload] = useState(true)
 
   // Use the download hook if we have a downloadId
   const { download, pauseDownload, resumeDownload, removeDownload } = useDownload(downloadId)
+
+  useEffect(() => {
+    // Check if this movie is already downloaded
+    checkIfDownloaded()
+  }, [id])
+
+  const checkIfDownloaded = async () => {
+    try {
+      setIsCheckingDownload(true)
+
+      // Get all downloads from AsyncStorage
+      const jsonValue = await AsyncStorage.getItem("downloads")
+      const downloads: DownloadModel[] = jsonValue != null ? JSON.parse(jsonValue) : []
+
+      // Find if this movie is already downloaded
+      const existingDownload = downloads.find((download) => {
+        // Check if the download ID contains the movie ID
+        if (download._id.includes(`_${id}`)) return true
+
+        // Or if the source contains the movie ID
+        if (download.source && download.source.includes(`id=${id}`)) return true
+
+        return false
+      })
+
+      if (existingDownload) {
+        console.log("Movie already downloaded:", existingDownload)
+        setDownloadId(existingDownload._id)
+        setIsDownloading(true)
+      }
+
+      setIsCheckingDownload(false)
+    } catch (error) {
+      console.error("Error checking if downloaded:", error)
+      setIsCheckingDownload(false)
+    }
+  }
 
   const buttonAnimatedStyle = useAnimatedStyle(() => {
     return {
@@ -186,6 +226,35 @@ export default function MovieDetailScreen() {
     } else if (download?.status === "PAUSED") {
       await resumeDownload()
     }
+  }
+
+  const handleRemoveDownload = async () => {
+    if (!downloadId) return
+
+    Alert.alert(
+      "Remove Download",
+      "Are you sure you want to remove this download? This will delete the downloaded files.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Remove",
+          onPress: async () => {
+            await removeDownload()
+            setDownloadId("")
+            setIsDownloading(false)
+          },
+          style: "destructive",
+        },
+      ],
+    )
+  }
+
+  const handleShowFiles = () => {
+    if (!downloadId) return
+    router.push(`/file-list?downloadId=${downloadId}`)
   }
 
   const formatBytes = (bytes, decimals = 2) => {
@@ -259,7 +328,11 @@ export default function MovieDetailScreen() {
 
           {/* Watch/Download Button */}
           <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.watchButtonContainer}>
-            {download ? (
+            {isCheckingDownload ? (
+              <View style={styles.loadingContainer}>
+                <ThemedText style={styles.loadingText}>Checking download status...</ThemedText>
+              </View>
+            ) : download ? (
               <View style={styles.downloadContainer}>
                 {/* Download Progress */}
                 <View style={styles.progressBarContainer}>
@@ -283,24 +356,41 @@ export default function MovieDetailScreen() {
                 {/* Control Buttons */}
                 <View style={styles.controlsRow}>
                   {/* Pause/Resume Button */}
-                  <TouchableOpacity activeOpacity={0.9} onPress={handlePauseResume} style={styles.controlButton}>
-                    <LinearGradient
-                      colors={["#6a11cb", "#2575fc"]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.controlButtonGradient}
-                    >
-                      <Ionicons
-                        name={download.status === "DOWNLOADING" ? "pause" : "play"}
-                        size={24}
-                        color="white"
-                        style={styles.controlIcon}
-                      />
-                      <ThemedText style={styles.controlButtonText}>
-                        {download.status === "DOWNLOADING" ? "Pause" : "Resume"}
-                      </ThemedText>
-                    </LinearGradient>
-                  </TouchableOpacity>
+                  {download.status !== "COMPLETED" && (
+                    <TouchableOpacity activeOpacity={0.9} onPress={handlePauseResume} style={styles.controlButton}>
+                      <LinearGradient
+                        colors={["#6a11cb", "#2575fc"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.controlButtonGradient}
+                      >
+                        <Ionicons
+                          name={download.status === "DOWNLOADING" ? "pause" : "play"}
+                          size={24}
+                          color="white"
+                          style={styles.controlIcon}
+                        />
+                        <ThemedText style={styles.controlButtonText}>
+                          {download.status === "DOWNLOADING" ? "Pause" : "Resume"}
+                        </ThemedText>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Show Files Button */}
+                  {download.location && (
+                    <TouchableOpacity activeOpacity={0.9} onPress={handleShowFiles} style={styles.controlButton}>
+                      <LinearGradient
+                        colors={["#6a11cb", "#2575fc"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.controlButtonGradient}
+                      >
+                        <Ionicons name="folder-open" size={24} color="white" style={styles.controlIcon} />
+                        <ThemedText style={styles.controlButtonText}>Show Files</ThemedText>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  )}
 
                   {/* Watch Button (if download is complete) */}
                   {download.status === "COMPLETED" && (
@@ -326,7 +416,7 @@ export default function MovieDetailScreen() {
                   {/* Cancel/Remove Button */}
                   <TouchableOpacity
                     activeOpacity={0.9}
-                    onPress={removeDownload}
+                    onPress={handleRemoveDownload}
                     style={[styles.controlButton, styles.removeButton]}
                   >
                     <LinearGradient
@@ -615,6 +705,8 @@ const styles = StyleSheet.create({
   controlsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 10,
   },
   controlButton: {
     flex: 1,
@@ -622,6 +714,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: "hidden",
     marginHorizontal: 5,
+    minWidth: 100,
   },
   removeButton: {
     backgroundColor: "#ff4d4d",
@@ -640,6 +733,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
     color: "#fff",
+  },
+  loadingContainer: {
+    padding: 20,
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.7)",
   },
 })
 

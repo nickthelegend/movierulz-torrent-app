@@ -283,13 +283,33 @@ export default class DownloadManager {
         return
       }
 
-      if (download.location) {
-        await this.torrentService.remove(downloadId, download.location)
+      // First pause the download if it's in progress
+      if (download.status === "DOWNLOADING") {
+        try {
+          await this.torrentService.pause(downloadId)
+        } catch (e) {
+          console.log("Error pausing download before removal:", e)
+        }
       }
 
-      this.downloadDb.delete(downloadId)
+      // Then remove the torrent and its files
+      if (download.location) {
+        console.log(`Removing torrent files from ${download.location}`)
+        try {
+          // Make sure to set the second parameter to true to delete files
+          await this.torrentService.remove(downloadId, download.location, true)
+        } catch (e) {
+          console.error("Error removing torrent files:", e)
+        }
+      } else {
+        console.log("No location found for download, skipping file deletion")
+      }
+
+      // Finally remove from database
+      await this.downloadDb.delete(downloadId)
+      console.log(`Download ${downloadId} successfully removed`)
     } catch (error) {
-      console.error(error)
+      console.error("Error in remove method:", error)
     }
   }
 

@@ -1,280 +1,224 @@
 "use client"
-
-import { useState, useEffect, useRef } from "react"
-import {
-  StyleSheet,
-  View,
-  TouchableOpacity,
-  StatusBar,
-  ActivityIndicator,
-  Platform,
-  DeviceEventEmitter,
-  NativeModules,
-} from "react-native"
+import { useState, useEffect } from "react"
+import { StyleSheet, View, TouchableOpacity, StatusBar, Dimensions } from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
-import { LinearGradient } from "expo-linear-gradient"
 import { Ionicons } from "@expo/vector-icons"
-import * as NavigationBar from "expo-navigation-bar"
 import * as ScreenOrientation from "expo-screen-orientation"
-import { useEvent } from "expo"
 import { useVideoPlayer, VideoView } from "expo-video"
+import { useEvent } from "expo"
+import AsyncStorage from "@react-native-async-storage/async-storage"
 
 import { ThemedText } from "@/components/ThemedText"
-
-const { TorrentModule } = NativeModules
-
-// Sample movie data - in a real app, this would come from an API
-const MOVIES = [
-  {
-    id: "1",
-    title: "Inception",
-    directUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-  },
-  {
-    id: "2",
-    title: "The Dark Knight",
-    directUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  },
-  {
-    id: "3",
-    title: "Interstellar",
-    directUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-  },
-  {
-    id: "4",
-    title: "Pulp Fiction",
-    directUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-  },
-  {
-    id: "5",
-    title: "The Matrix",
-    directUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-  },
-  {
-    id: "6",
-    title: "Parasite",
-    directUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-  },
-]
+import type { DownloadModel } from "@/utils/downloadManager"
 
 export default function VideoPlayerScreen() {
-  const { id } = useLocalSearchParams()
+  const { id, filePath } = useLocalSearchParams()
   const router = useRouter()
-  const movie = MOVIES.find((m) => m.id === id)
+  const [isPortrait, setIsPortrait] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
+  const [videoPath, setVideoPath] = useState("")
+  const [error, setError] = useState("")
 
-  // State variables
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [isLandscape, setIsLandscape] = useState(false)
-  const [torrentFilePath, setTorrentFilePath] = useState("") // Initialize state here
-  const loadingTimeoutRef = useRef(null)
-
-  // Listen for torrent completion events
   useEffect(() => {
-    if (!movie) return
+    // Set initial orientation to landscape
+    lockOrientation(false)
 
-    const torrentInfoListener = (event) => {
-      if (event.downloadId && event.downloadId.includes(`movie_${movie.id}`)) {
-        if (event.type === "TORRENT_FINISHED" && event.filePath) {
-          // When torrent is finished, use the local file path
-          setTorrentFilePath(event.filePath)
-        }
-      }
+    // If filePath is provided, use it directly
+    if (filePath) {
+      console.log("Using provided file path:", filePath)
+      setVideoPath(decodeURIComponent(filePath as string))
+      setIsLoading(false)
+      return
     }
 
-    // Add event listener using DeviceEventEmitter instead of NativeEventEmitter
-    const subscription = DeviceEventEmitter.addListener("TorrentEvent", torrentInfoListener)
+    // Otherwise get the video file path from the downloaded torrent
+    getVideoFilePath()
 
-    // Clean up listener when component unmountsistener when component unmounts
+    // Clean up on unmount
     return () => {
-      subscription.remove()
-    }
-  }, [movie])
-
-  // Force loading to end after a reasonable time
-  useEffect(() => {
-    // Force hide loading after 3 seconds regardless of events
-    loadingTimeoutRef.current = setTimeout(() => {
-      setLoading(false)
-    }, 3000)
-
-    return () => {
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current)
-      }
+      // Reset to portrait orientation when leaving the screen
+      lockOrientation(true)
     }
   }, [])
 
-  // Initialize video player with the direct URL or torrent file path
-  const videoUrl = torrentFilePath || movie?.directUrl || ""
-  const player = useVideoPlayer(videoUrl, (player) => {
-    // Auto-play when ready
-    try {
-      player.play()
-    } catch (err) {
-      console.error("Error playing video:", err)
-      setError(err)
+  // Initialize the video player once we have the video path
+  const player = useVideoPlayer(videoPath || null, player => {
+    if (player && videoPath) {
+      player.loop = true;
+      player.play();
     }
-  })
+  });
 
-  // Use events from the player
-  const { isPlaying } = useEvent(player, "playingChange", { isPlaying: player.playing })
-  const { isLoaded } = useEvent(player, "loadedChange", { isLoaded: player.loaded })
-  const { isBuffering } = useEvent(player, "bufferingChange", { isBuffering: player.buffering })
-  const { currentTime } = useEvent(player, "timeUpdate", { currentTime: player.currentTime })
+  // Listen for playing state changes
+  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player?.playing || false });
 
-  // Update loading state based on player events
-  useEffect(() => {
-    if (isLoaded || isPlaying || currentTime > 0) {
-      setLoading(false)
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current)
+  const getVideoFilePath = async () => {
+    try {
+      setIsLoading(true)
+      setError("")
+
+      // Get all downloads from AsyncStorage
+      const jsonValue = await AsyncStorage.getItem("downloads")
+      const downloads: DownloadModel[] = jsonValue != null ? JSON.parse(jsonValue) : []
+
+      console.log("All downloads:", downloads)
+
+      // Find the download for this movie
+      const movieDownload = downloads.find((download) => {
+        // Check if the download ID contains the movie ID
+        if (download._id.includes(`_${id}`)) return true
+
+        // Or if the source contains the movie ID
+        if (download.source && download.source.includes(`id=${id}`)) return true
+
+        return false
+      })
+
+      console.log("Found movie download:", movieDownload)
+
+      if (!movieDownload) {
+        setError("Download not found. Please download the movie first.")
+        setIsLoading(false)
+        return
       }
-    }
-  }, [isLoaded, isPlaying, currentTime])
 
-  // Toggle orientation function
-  const toggleOrientation = async () => {
+      if (movieDownload.status !== "COMPLETED") {
+        setError("Download not complete. Please wait for the download to finish.")
+        setIsLoading(false)
+        return
+      }
+
+      if (!movieDownload.location) {
+        setError("Video file location not found.")
+        setIsLoading(false)
+        return
+      }
+
+      // In a real app, you would scan the directory to find the video file
+      // For this example, we'll use the location directly
+      // The location should be the full path to the video file
+      const videoFilePath = `file://${movieDownload.location}`
+
+      console.log("Video file path:", videoFilePath)
+      setVideoPath(videoFilePath)
+      setIsLoading(false)
+    } catch (error) {
+      console.error("Error getting video file path:", error)
+      setError(`Error loading video: ${error.message}`)
+      setIsLoading(false)
+    }
+  }
+
+  const lockOrientation = async (portrait) => {
     try {
-      if (isLandscape) {
-        // Change to portrait
+      if (portrait) {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
-        setIsLandscape(false)
       } else {
-        // Change to landscape
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT)
-        setIsLandscape(true)
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE)
       }
-    } catch (err) {
-      console.error("Error changing orientation:", err)
+      setIsPortrait(portrait)
+    } catch (error) {
+      console.error("Error changing orientation:", error)
     }
   }
 
-  // Reset orientation when unmounting
-  useEffect(() => {
-    return () => {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
-    }
-  }, [])
-
-  // Listen for orientation changes
-  useEffect(() => {
-    const subscription = ScreenOrientation.addOrientationChangeListener(({ orientationInfo }) => {
-      const isLandscapeOrientation =
-        orientationInfo.orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT ||
-        orientationInfo.orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT
-
-      setIsLandscape(isLandscapeOrientation)
-    })
-
-    return () => {
-      ScreenOrientation.removeOrientationChangeListener(subscription)
-    }
-  }, [])
-
-  // Hide navigation bar function
-  const hideSystemUI = async () => {
-    if (Platform.OS === "android") {
-      await NavigationBar.setVisibilityAsync("hidden")
-      await NavigationBar.setBehaviorAsync("overlay-swipe")
-    }
-    StatusBar.setHidden(true, "fade")
+  const toggleOrientation = async () => {
+    await lockOrientation(!isPortrait)
   }
 
-  // Show navigation bar function for cleanup
-  const showSystemUI = async () => {
-    if (Platform.OS === "android") {
-      await NavigationBar.setVisibilityAsync("visible")
-      await NavigationBar.setBehaviorAsync("default")
-    }
-    StatusBar.setHidden(false, "fade")
-  }
-
-  // Hide system UI when component mounts
-  useEffect(() => {
-    hideSystemUI()
-    return () => {
-      showSystemUI()
-    }
-  }, [])
-
-  // Handle back button
   const handleBack = () => {
-    if (player) {
-      try {
-        player.pause()
-      } catch (err) {
-        console.error("Error pausing video:", err)
-      }
-    }
     router.back()
   }
 
-  // If no movie found
-  if (!movie) {
-    return (
-      <View style={styles.errorContainer}>
-        <ThemedText>Movie not found</ThemedText>
-        <TouchableOpacity onPress={() => router.back()}>
-          <ThemedText style={styles.backLink}>Go Back</ThemedText>
-        </TouchableOpacity>
-      </View>
-    )
+  const togglePlayPause = () => {
+    if (isPlaying) {
+      player.pause();
+    } else {
+      player.play();
+    }
   }
 
   return (
     <View style={styles.container}>
       <StatusBar hidden />
 
-      {/* Video Player */}
-      <View style={styles.videoContainer}>
-        <VideoView style={styles.video} player={player} resizeMode="contain" allowsFullscreen allowsPictureInPicture />
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ThemedText style={styles.loadingText}>Loading video...</ThemedText>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <ThemedText style={styles.errorText}>{error}</ThemedText>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <ThemedText style={styles.backButtonText}>Go Back</ThemedText>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <VideoView 
+            style={styles.video} 
+            player={player} 
+            allowsFullscreen 
+            allowsPictureInPicture 
+          />
 
-        {/* Loading Indicator */}
-        {loading && (
-          <View style={styles.loadingContainer}>
-            <LinearGradient colors={["rgba(0,0,0,0.7)", "rgba(0,0,0,0.5)"]} style={StyleSheet.absoluteFill} />
-            <ActivityIndicator size="large" color="#6a11cb" />
-            <ThemedText style={styles.loadingText}>Loading video...</ThemedText>
-          </View>
-        )}
+          <View style={styles.controls}>
+            <TouchableOpacity style={styles.controlButton} onPress={handleBack}>
+              <Ionicons name="arrow-back" size={24} color="white" />
+            </TouchableOpacity>
 
-        {/* Error Display */}
-        {error && (
-          <View style={styles.errorOverlay}>
-            <ThemedText style={styles.errorText}>Error loading video: {error.message || "Unknown error"}</ThemedText>
-            <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
-              <ThemedText style={styles.retryText}>Go Back</ThemedText>
+            <TouchableOpacity style={styles.controlButton} onPress={togglePlayPause}>
+              <Ionicons name={isPlaying ? "pause" : "play"} size={24} color="white" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.controlButton} onPress={toggleOrientation}>
+              <Ionicons name={isPortrait ? "phone-landscape" : "phone-portrait"} size={24} color="white" />
             </TouchableOpacity>
           </View>
-        )}
-
-        {/* Back Button */}
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <View style={styles.backButtonInner}>
-            <Ionicons name="arrow-back" size={24} color="white" />
-          </View>
-        </TouchableOpacity>
-
-        {/* Orientation Toggle Button */}
-        <TouchableOpacity style={styles.orientationButton} onPress={toggleOrientation}>
-          <View style={[styles.orientationButtonInner, isLandscape && styles.activeButton]}>
-            <Ionicons
-              name={isLandscape ? "phone-portrait" : "phone-landscape"}
-              size={24}
-              color={isLandscape ? "#6a11cb" : "white"}
-            />
-          </View>
-        </TouchableOpacity>
-      </View>
+        </>
+      )}
     </View>
   )
 }
+
+const { width, height } = Dimensions.get("window")
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  video: {
+    width: "100%",
+    height: "100%",
+  },
+  controls: {
+    position: "absolute",
+    top: 20,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+  },
+  controlButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 18,
+    color: "white",
   },
   errorContainer: {
     flex: 1,
@@ -282,90 +226,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
-  backLink: {
-    marginTop: 20,
-    color: "#6a11cb",
-    fontSize: 16,
-  },
-  videoContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000",
-  },
-  video: {
-    width: "100%",
-    height: "100%",
-  },
-  loadingContainer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 20,
-    fontSize: 16,
-    color: "#fff",
-  },
-  backButton: {
-    position: "absolute",
-    top: 40,
-    left: 20,
-    zIndex: 10,
-  },
-  backButtonInner: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: "hidden",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  orientationButton: {
-    position: "absolute",
-    bottom: 40,
-    right: 20,
-    zIndex: 10,
-  },
-  orientationButtonInner: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    overflow: "hidden",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.2)",
-  },
-  activeButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    borderColor: "#6a11cb",
-    borderWidth: 2,
-  },
-  errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
   errorText: {
-    color: "#ff4d4d",
-    fontSize: 16,
+    fontSize: 18,
+    color: "white",
     textAlign: "center",
     marginBottom: 20,
   },
-  retryButton: {
+  backButton: {
     backgroundColor: "#6a11cb",
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 20,
+    borderRadius: 10,
   },
-  retryText: {
-    color: "#fff",
+  backButtonText: {
+    color: "white",
     fontSize: 16,
+    fontWeight: "bold",
   },
 })
-
