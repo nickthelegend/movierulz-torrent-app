@@ -21,6 +21,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from "react-native-reanimated"
+import { Ionicons } from "@expo/vector-icons"
 
 import { ThemedText } from "@/components/ThemedText"
 
@@ -180,10 +181,27 @@ export default function HomeScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.headerGradient}
           >
-            <ThemedText type="title" style={styles.headerTitle}>
-              Movie Stream
-            </ThemedText>
-            <ThemedText style={styles.headerSubtitle}>Discover & Watch</ThemedText>
+            <View style={styles.headerContent}>
+              <View>
+                <ThemedText type="title" style={styles.headerTitle}>
+                  Movie Stream
+                </ThemedText>
+                <ThemedText style={styles.headerSubtitle}>Discover & Watch</ThemedText>
+              </View>
+
+              {/* Downloads Button */}
+              <TouchableOpacity style={styles.downloadsButton} onPress={() => router.push("/downloads")}>
+                <LinearGradient
+                  colors={["#6a11cb", "#2575fc"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.downloadsButtonGradient}
+                >
+                  <Ionicons name="download" size={18} color="white" style={styles.downloadsIcon} />
+                  <ThemedText style={styles.downloadsText}>Downloads</ThemedText>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           </LinearGradient>
         </BlurView>
       </Animated.View>
@@ -228,6 +246,11 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 20,
   },
+  headerContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   headerTitle: {
     fontSize: 28,
     fontWeight: "bold",
@@ -237,6 +260,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "rgba(255, 255, 255, 0.8)",
     marginTop: 5,
+  },
+  downloadsButton: {
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  downloadsButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  downloadsIcon: {
+    marginRight: 5,
+  },
+  downloadsText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 14,
   },
   listContainer: {
     paddingBottom: 30,

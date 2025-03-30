@@ -1,5 +1,15 @@
 "use client"
-import { StyleSheet, View, Image, ScrollView, TouchableOpacity, StatusBar, Dimensions } from "react-native"
+import {
+  StyleSheet,
+  View,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  StatusBar,
+  Dimensions,
+  NativeModules,
+  Alert,
+} from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { LinearGradient } from "expo-linear-gradient"
 import { BlurView } from "expo-blur"
@@ -12,8 +22,13 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated"
 import { Ionicons } from "@expo/vector-icons"
+import { useState } from "react"
 
 import { ThemedText } from "@/components/ThemedText"
+import DownloadManager from "@/utils/downloadManager"
+import { useDownload } from "@/utils/useDownloadManager"
+
+const { TorrentModule } = NativeModules
 
 // Sample movie data - in a real app, this would come from an API
 const MOVIES = [
@@ -123,6 +138,11 @@ export default function MovieDetailScreen() {
   const movie = MOVIES.find((m) => m.id === id)
 
   const buttonScale = useSharedValue(1)
+  const [downloadId, setDownloadId] = useState("")
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  // Use the download hook if we have a downloadId
+  const { download, pauseDownload, resumeDownload, removeDownload } = useDownload(downloadId)
 
   const buttonAnimatedStyle = useAnimatedStyle(() => {
     return {
@@ -136,6 +156,52 @@ export default function MovieDetailScreen() {
 
   const handlePressOut = () => {
     buttonScale.value = withSpring(1)
+  }
+
+  const startDownload = async () => {
+    if (!movie || !movie.torrentUrl) {
+      Alert.alert("Error", "No torrent URL available")
+      return
+    }
+
+    setIsDownloading(true)
+
+    try {
+      // Use the DownloadManager to add a new download
+      const downloadManager = DownloadManager.getInstance()
+      const newDownload = await downloadManager.add(movie.torrentUrl)
+      setDownloadId(newDownload._id)
+    } catch (error) {
+      console.error("Error starting download:", error)
+      Alert.alert("Error", "Failed to start download")
+      setIsDownloading(false)
+    }
+  }
+
+  const handlePauseResume = async () => {
+    if (!downloadId) return
+
+    if (download?.status === "DOWNLOADING") {
+      await pauseDownload()
+    } else if (download?.status === "PAUSED") {
+      await resumeDownload()
+    }
+  }
+
+  const formatBytes = (bytes, decimals = 2) => {
+    if (bytes === 0) return "0 Bytes"
+
+    const k = 1024
+    const dm = decimals < 0 ? 0 : decimals
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"]
+
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+
+    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i]
+  }
+
+  const formatSpeed = (bytesPerSecond) => {
+    return `${formatBytes(bytesPerSecond)}/s`
   }
 
   if (!movie) {
@@ -191,27 +257,111 @@ export default function MovieDetailScreen() {
             </Animated.View>
           </View>
 
-          {/* Watch Button */}
+          {/* Watch/Download Button */}
           <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.watchButtonContainer}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPressIn={handlePressIn}
-              onPressOut={handlePressOut}
-              onPress={() => router.push(`/(movies)/video-player?id=${movie.id}`)}
-              style={styles.watchButtonTouchable}
-            >
-              <Animated.View style={[styles.watchButton, buttonAnimatedStyle]}>
-                <LinearGradient
-                  colors={["#6a11cb", "#2575fc"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.watchButtonGradient}
-                >
-                  <Ionicons name="play" size={24} color="white" style={styles.playIcon} />
-                  <ThemedText style={styles.watchButtonText}>Watch Movie</ThemedText>
-                </LinearGradient>
-              </Animated.View>
-            </TouchableOpacity>
+            {download ? (
+              <View style={styles.downloadContainer}>
+                {/* Download Progress */}
+                <View style={styles.progressBarContainer}>
+                  <View style={[styles.progressBar, { width: `${download.progress}%` }]} />
+                </View>
+
+                {/* Download Status and Speed */}
+                <View style={styles.downloadInfoContainer}>
+                  <ThemedText style={styles.progressText}>{Math.round(download.progress)}% Downloaded</ThemedText>
+
+                  {download.status === "DOWNLOADING" && (
+                    <ThemedText style={styles.speedText}>{formatSpeed(download.downloadRate)}</ThemedText>
+                  )}
+                </View>
+
+                {/* Download Size Info */}
+                <ThemedText style={styles.sizeText}>
+                  {formatBytes(download.downloadedSize)} / {formatBytes(download.totalSize || 0)}
+                </ThemedText>
+
+                {/* Control Buttons */}
+                <View style={styles.controlsRow}>
+                  {/* Pause/Resume Button */}
+                  <TouchableOpacity activeOpacity={0.9} onPress={handlePauseResume} style={styles.controlButton}>
+                    <LinearGradient
+                      colors={["#6a11cb", "#2575fc"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.controlButtonGradient}
+                    >
+                      <Ionicons
+                        name={download.status === "DOWNLOADING" ? "pause" : "play"}
+                        size={24}
+                        color="white"
+                        style={styles.controlIcon}
+                      />
+                      <ThemedText style={styles.controlButtonText}>
+                        {download.status === "DOWNLOADING" ? "Pause" : "Resume"}
+                      </ThemedText>
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  {/* Watch Button (if download is complete) */}
+                  {download.status === "COMPLETED" && (
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPressIn={handlePressIn}
+                      onPressOut={handlePressOut}
+                      onPress={() => router.push(`/(movies)/video-player?id=${movie.id}`)}
+                      style={styles.controlButton}
+                    >
+                      <LinearGradient
+                        colors={["#6a11cb", "#2575fc"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.controlButtonGradient}
+                      >
+                        <Ionicons name="play" size={24} color="white" style={styles.controlIcon} />
+                        <ThemedText style={styles.controlButtonText}>Watch</ThemedText>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Cancel/Remove Button */}
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={removeDownload}
+                    style={[styles.controlButton, styles.removeButton]}
+                  >
+                    <LinearGradient
+                      colors={["#ff4d4d", "#ff6b6b"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.controlButtonGradient}
+                    >
+                      <Ionicons name="trash" size={24} color="white" style={styles.controlIcon} />
+                      <ThemedText style={styles.controlButtonText}>Remove</ThemedText>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
+                onPress={startDownload}
+                style={styles.watchButtonTouchable}
+              >
+                <Animated.View style={[styles.watchButton, buttonAnimatedStyle]}>
+                  <LinearGradient
+                    colors={["#6a11cb", "#2575fc"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.watchButtonGradient}
+                  >
+                    <Ionicons name="arrow-down-circle" size={24} color="white" style={styles.playIcon} />
+                    <ThemedText style={styles.watchButtonText}>Download Movie</ThemedText>
+                  </LinearGradient>
+                </Animated.View>
+              </TouchableOpacity>
+            )}
           </Animated.View>
 
           {/* Movie Details */}
@@ -422,6 +572,74 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.7)",
     lineHeight: 22,
+  },
+  downloadContainer: {
+    width: "100%",
+    backgroundColor: "rgba(26, 26, 26, 0.8)",
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+  },
+  progressBarContainer: {
+    height: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 5,
+    marginBottom: 10,
+    overflow: "hidden",
+  },
+  progressBar: {
+    height: "100%",
+    backgroundColor: "#6a11cb",
+    borderRadius: 5,
+  },
+  downloadInfoContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 5,
+  },
+  progressText: {
+    fontSize: 14,
+    color: "white",
+  },
+  speedText: {
+    fontSize: 14,
+    color: "#2575fc",
+    fontWeight: "bold",
+  },
+  sizeText: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.7)",
+    marginBottom: 15,
+  },
+  controlsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  controlButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 20,
+    overflow: "hidden",
+    marginHorizontal: 5,
+  },
+  removeButton: {
+    backgroundColor: "#ff4d4d",
+  },
+  controlButtonGradient: {
+    width: "100%",
+    height: "100%",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  controlIcon: {
+    marginRight: 5,
+  },
+  controlButtonText: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#fff",
   },
 })
 

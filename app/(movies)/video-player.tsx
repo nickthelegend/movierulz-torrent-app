@@ -1,7 +1,16 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { StyleSheet, View, TouchableOpacity, StatusBar, ActivityIndicator, Platform } from "react-native"
+import {
+  StyleSheet,
+  View,
+  TouchableOpacity,
+  StatusBar,
+  ActivityIndicator,
+  Platform,
+  DeviceEventEmitter,
+  NativeModules,
+} from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { LinearGradient } from "expo-linear-gradient"
 import { Ionicons } from "@expo/vector-icons"
@@ -11,6 +20,8 @@ import { useEvent } from "expo"
 import { useVideoPlayer, VideoView } from "expo-video"
 
 import { ThemedText } from "@/components/ThemedText"
+
+const { TorrentModule } = NativeModules
 
 // Sample movie data - in a real app, this would come from an API
 const MOVIES = [
@@ -55,7 +66,30 @@ export default function VideoPlayerScreen() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [isLandscape, setIsLandscape] = useState(false)
+  const [torrentFilePath, setTorrentFilePath] = useState("") // Initialize state here
   const loadingTimeoutRef = useRef(null)
+
+  // Listen for torrent completion events
+  useEffect(() => {
+    if (!movie) return
+
+    const torrentInfoListener = (event) => {
+      if (event.downloadId && event.downloadId.includes(`movie_${movie.id}`)) {
+        if (event.type === "TORRENT_FINISHED" && event.filePath) {
+          // When torrent is finished, use the local file path
+          setTorrentFilePath(event.filePath)
+        }
+      }
+    }
+
+    // Add event listener using DeviceEventEmitter instead of NativeEventEmitter
+    const subscription = DeviceEventEmitter.addListener("TorrentEvent", torrentInfoListener)
+
+    // Clean up listener when component unmountsistener when component unmounts
+    return () => {
+      subscription.remove()
+    }
+  }, [movie])
 
   // Force loading to end after a reasonable time
   useEffect(() => {
@@ -71,8 +105,8 @@ export default function VideoPlayerScreen() {
     }
   }, [])
 
-  // Initialize video player with the direct URL
-  const videoUrl = movie?.directUrl || ""
+  // Initialize video player with the direct URL or torrent file path
+  const videoUrl = torrentFilePath || movie?.directUrl || ""
   const player = useVideoPlayer(videoUrl, (player) => {
     // Auto-play when ready
     try {
