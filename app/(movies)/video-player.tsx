@@ -1,12 +1,13 @@
 "use client"
 import { useState, useEffect } from "react"
-import { StyleSheet, View, TouchableOpacity, StatusBar, Dimensions } from "react-native"
+import { StyleSheet, View, TouchableOpacity, StatusBar, Dimensions, Platform, BackHandler } from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import * as ScreenOrientation from "expo-screen-orientation"
 import { useVideoPlayer, VideoView } from "expo-video"
 import { useEvent } from "expo"
 import AsyncStorage from "@react-native-async-storage/async-storage"
+import * as NavigationBar from "expo-navigation-bar"
 
 import { ThemedText } from "@/components/ThemedText"
 import type { DownloadModel } from "@/utils/downloadManager"
@@ -14,14 +15,18 @@ import type { DownloadModel } from "@/utils/downloadManager"
 export default function VideoPlayerScreen() {
   const { id, filePath } = useLocalSearchParams()
   const router = useRouter()
-  const [isPortrait, setIsPortrait] = useState(true)
+  const [isPortrait, setIsPortrait] = useState(isPortrait)
   const [isLoading, setIsLoading] = useState(true)
   const [videoPath, setVideoPath] = useState("")
   const [error, setError] = useState("")
+  const [controlsVisible, setControlsVisible] = useState(true)
 
   useEffect(() => {
     // Set initial orientation to landscape
     lockOrientation(false)
+
+    // Hide system navigation bar
+    hideSystemUI()
 
     // If filePath is provided, use it directly
     if (filePath) {
@@ -34,23 +39,77 @@ export default function VideoPlayerScreen() {
     // Otherwise get the video file path from the downloaded torrent
     getVideoFilePath()
 
+    // Handle back button press
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
+      handleBack()
+      return true
+    })
+
     // Clean up on unmount
     return () => {
+      backHandler.remove()
+
       // Reset to portrait orientation when leaving the screen
-      lockOrientation(true)
+      resetOrientation()
     }
   }, [])
 
-  // Initialize the video player once we have the video path
-  const player = useVideoPlayer(videoPath || null, player => {
-    if (player && videoPath) {
-      player.loop = true;
-      player.play();
+  const resetOrientation = async () => {
+    try {
+      // First show the system UI
+      await showSystemUI()
+
+      // Then set orientation to portrait
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
+
+      // Add a small delay to ensure the orientation change completes
+      setTimeout(() => {
+        console.log("Orientation reset to portrait")
+      }, 100)
+    } catch (error) {
+      console.error("Error resetting orientation:", error)
     }
-  });
+  }
+
+  const hideSystemUI = async () => {
+    // Hide status bar
+    StatusBar.setHidden(true, "fade")
+
+    // Hide navigation bar on Android
+    if (Platform.OS === "android") {
+      try {
+        await NavigationBar.setVisibilityAsync("hidden")
+        await NavigationBar.setBehaviorAsync("inset-swipe")
+      } catch (e) {
+        console.error("Error hiding navigation bar:", e)
+      }
+    }
+  }
+
+  const showSystemUI = async () => {
+    // Show status bar
+    StatusBar.setHidden(false, "fade")
+
+    // Show navigation bar on Android
+    if (Platform.OS === "android") {
+      try {
+        await NavigationBar.setVisibilityAsync("visible")
+      } catch (e) {
+        console.error("Error showing navigation bar:", e)
+      }
+    }
+  }
+
+  // Initialize the video player once we have the video path
+  const player = useVideoPlayer(videoPath || null, (player) => {
+    if (player && videoPath) {
+      player.loop = true
+      player.play()
+    }
+  })
 
   // Listen for playing state changes
-  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player?.playing || false });
+  const { isPlaying } = useEvent(player, "playingChange", { isPlaying: player?.playing || false })
 
   const getVideoFilePath = async () => {
     try {
@@ -126,16 +185,26 @@ export default function VideoPlayerScreen() {
     await lockOrientation(!isPortrait)
   }
 
-  const handleBack = () => {
-    router.back()
+  const handleBack = async () => {
+    // First reset orientation to portrait
+    await resetOrientation()
+
+    // Then navigate back
+    setTimeout(() => {
+      router.back()
+    }, 100)
   }
 
   const togglePlayPause = () => {
     if (isPlaying) {
-      player.pause();
+      player.pause()
     } else {
-      player.play();
+      player.play()
     }
+  }
+
+  const toggleControls = () => {
+    setControlsVisible(!controlsVisible)
   }
 
   return (
@@ -155,26 +224,25 @@ export default function VideoPlayerScreen() {
         </View>
       ) : (
         <>
-          <VideoView 
-            style={styles.video} 
-            player={player} 
-            allowsFullscreen 
-            allowsPictureInPicture 
-          />
+          <TouchableOpacity activeOpacity={1} style={styles.videoContainer} onPress={toggleControls}>
+            <VideoView style={styles.video} player={player} allowsFullscreen allowsPictureInPicture />
+          </TouchableOpacity>
 
-          <View style={styles.controls}>
-            <TouchableOpacity style={styles.controlButton} onPress={handleBack}>
-              <Ionicons name="arrow-back" size={24} color="white" />
-            </TouchableOpacity>
+          {controlsVisible && (
+            <View style={styles.controls}>
+              <TouchableOpacity style={styles.controlButton} onPress={handleBack}>
+                <Ionicons name="arrow-back" size={24} color="white" />
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.controlButton} onPress={togglePlayPause}>
-              <Ionicons name={isPlaying ? "pause" : "play"} size={24} color="white" />
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.controlButton} onPress={togglePlayPause}>
+                <Ionicons name={isPlaying ? "pause" : "play"} size={24} color="white" />
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.controlButton} onPress={toggleOrientation}>
-              <Ionicons name={isPortrait ? "phone-landscape" : "phone-portrait"} size={24} color="white" />
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity style={styles.controlButton} onPress={toggleOrientation}>
+                <Ionicons name={isPortrait ? "phone-landscape" : "phone-portrait"} size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
         </>
       )}
     </View>
@@ -189,6 +257,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
     justifyContent: "center",
     alignItems: "center",
+  },
+  videoContainer: {
+    width: "100%",
+    height: "100%",
   },
   video: {
     width: "100%",
@@ -244,3 +316,4 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 })
+

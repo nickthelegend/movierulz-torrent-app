@@ -98,14 +98,27 @@ const MOVIES = [
   },
 ]
 
-const { width } = Dimensions.get("window")
-const ITEM_WIDTH = width * 0.85
-const ITEM_HEIGHT = ITEM_WIDTH * 1.5
-
 export default function HomeScreen() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const scale = useSharedValue(1)
+  const [dimensions, setDimensions] = useState(Dimensions.get("window"))
+  const [isLandscape, setIsLandscape] = useState(dimensions.width > dimensions.height)
+
+  // Calculate grid dimensions based on orientation
+  const numColumns = isLandscape ? 4 : 2
+  const itemWidth = (dimensions.width - (numColumns + 1) * 10) / numColumns
+  const itemHeight = itemWidth * 1.5
+
+  // Handle orientation changes
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener("change", ({ window }) => {
+      setDimensions(window)
+      setIsLandscape(window.width > window.height)
+    })
+
+    return () => subscription.remove()
+  }, [])
 
   // Simulate loading
   useEffect(() => {
@@ -131,13 +144,16 @@ export default function HomeScreen() {
   }
 
   const renderMovie = ({ item, index }) => (
-    <Animated.View entering={FadeInDown.delay(index * 200).springify()} style={styles.movieContainer}>
+    <Animated.View
+      entering={FadeInDown.delay(index * 100).springify()}
+      style={[styles.movieContainer, { width: itemWidth }]}
+    >
       <TouchableOpacity
         activeOpacity={0.9}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         onPress={() => router.push(`/(movies)/${item.id}`)}
-        style={styles.movieTouchable}
+        style={[styles.movieTouchable, { width: itemWidth, height: itemHeight }]}
       >
         <Animated.View style={[styles.movieCard, animatedStyle]}>
           <Image source={{ uri: item.poster }} style={styles.poster} />
@@ -207,11 +223,14 @@ export default function HomeScreen() {
       </Animated.View>
 
       <FlatList
+        key={`grid-${numColumns}`} // Force re-render when columns change
         data={MOVIES}
         renderItem={renderMovie}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        numColumns={numColumns}
+        columnWrapperStyle={styles.columnWrapper}
       />
     </View>
   )
@@ -281,29 +300,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   listContainer: {
+    paddingHorizontal: 10,
     paddingBottom: 30,
   },
+  columnWrapper: {
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+  },
   movieContainer: {
-    alignItems: "center",
-    marginBottom: 25,
+    marginBottom: 20,
   },
   movieTouchable: {
-    width: ITEM_WIDTH,
-    height: ITEM_HEIGHT,
-    borderRadius: 20,
+    borderRadius: 15,
     overflow: "hidden",
   },
   movieCard: {
     width: "100%",
     height: "100%",
-    borderRadius: 20,
+    borderRadius: 15,
     overflow: "hidden",
     backgroundColor: "#1a1a1a",
     shadowColor: "#6a11cb",
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowRadius: 10,
+    elevation: 5,
   },
   poster: {
     width: "100%",
@@ -316,20 +337,20 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: "50%",
-    borderRadius: 20,
+    borderRadius: 15,
   },
   movieInfo: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 20,
+    padding: 12,
   },
   title: {
-    fontSize: 24,
+    fontSize: 16,
     fontWeight: "bold",
     color: "#fff",
-    marginBottom: 8,
+    marginBottom: 4,
     textShadowColor: "rgba(0, 0, 0, 0.75)",
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
@@ -340,17 +361,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   year: {
-    fontSize: 16,
+    fontSize: 12,
     color: "rgba(255, 255, 255, 0.8)",
   },
   ratingContainer: {
     backgroundColor: "rgba(106, 17, 203, 0.7)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   rating: {
-    fontSize: 14,
+    fontSize: 10,
     fontWeight: "bold",
     color: "#fff",
   },
