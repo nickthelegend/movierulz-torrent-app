@@ -1,50 +1,71 @@
-# Welcome to your Expo app 👋
+# Movie Rulz Torrent Downloader
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+![Preview Image 1](preview1.png)
+![Preview Image 2](preview2.png)
 
-## Get started
+Movie Rulz Torrent Downloader is a cutting-edge torrent client built with a combination of Kotlin, React Native, Expo, and jlibtorrent. This project leverages the jlibtorrent JNI bindings to provide a seamless torrent downloading experience across various Android architectures.
 
-1. Install dependencies
+## Overview
 
-   ```bash
-   npm install
-   ```
+This project is an Expo app that utilizes React Native packages and is built using Gradle. It integrates the powerful jlibtorrent libraries, including the primary jar containing the Java classes and several platform-specific jars containing the JNI binary libraries.
 
-2. Start the app
+## jlibtorrent Integration
 
-   ```bash
-    npx expo start
-   ```
+The following jlibtorrent jars are used in the project:
 
-In the output, you'll find options to open the app in a
+- **Core Library:** `jlibtorrent-${jlibtorrent_version}.jar`
+- **Android JNI Libraries:**
+  - `jlibtorrent-android-arm-${jlibtorrent_version}.jar`
+  - `jlibtorrent-android-arm64-${jlibtorrent_version}.jar`
+  - `jlibtorrent-android-x86-${jlibtorrent_version}.jar`
+  - `jlibtorrent-android-x86_64-${jlibtorrent_version}.jar`
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+These jars must be placed in the project's `libs` folder. They provide the required native libraries for different Android architectures (armeabi-v7a, arm64-v8a, x86, x86_64).
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Setup and Build Instructions
 
-## Get a fresh project
+### Gradle Build Configuration
 
-When you're ready, run:
+In your `android/build.gradle`, add the following dependency implementations in the **dependencies** section:
 
-```bash
-npm run reset-project
+```gradle
+implementation files("libs/jlibtorrent-${jlibtorrent_version}.jar")
+implementation files("libs/jlibtorrent-android-arm-${jlibtorrent_version}.jar")
+implementation files("libs/jlibtorrent-android-arm64-${jlibtorrent_version}.jar")
+implementation files("libs/jlibtorrent-android-x86-${jlibtorrent_version}.jar")
+implementation files("libs/jlibtorrent-android-x86_64-${jlibtorrent_version}.jar")
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
-## Learn more
+This configuration ensures that all required jlibtorrent jars are included in your project build.
 
-To learn more about developing your project with Expo, look at the following resources:
+### Main Application Setup
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+In your `MainApplication.kt`, import the torrent package by adding:
+```
+packages.add
+```
+Additionally, in the `torrent/TorrentModule.kt`, import all the necessary libraries. This Kotlin module implements the torrent functionality for the client.
 
-## Join the community
+### Building the Project
 
-Join our community of developers creating universal apps.
+* **Android Build:** Use `gradlew` to build your project. This will compile the project along with the integrated jlibtorrent libraries.
+* **Other Platforms:** Note that if you are planning to extend support for desktop operating systems (Windows, Linux, macOS), you might need to extract the native shared libraries (`.dll`, `.so`, or `.dylib`) from their respective jars and add them to the folder specified by your `java.library.path`.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+For more examples and usage, please refer to the [FrostWire jlibtorrent demo repository](https://github.com/frostwire/frostwire-jlibtorrent/tree/master/src/test/java/com/frostwire/jlibtorrent/demo).
+
+## Contribution
+
+This is the first version of Movie Rulz Torrent Downloader and it is released as open source. As stated:
+
+> "if we are not making it as a business, we open source it, anyone can contribute and keep the repo alive forever"
+
+We welcome contributions from the community to improve and extend the functionality of this torrent downloader. Whether it’s fixing bugs, adding new features, or enhancing performance, your contributions are highly valued.
+
+## License
+
+This project is open source. Please refer to the LICENSE file for more details on how you can use and contribute to this project.
+
+## Acknowledgements
+
+A big thank you to the developers behind jlibtorrent and the FrostWire community for providing invaluable resources and inspiration.
