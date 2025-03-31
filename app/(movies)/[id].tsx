@@ -10,6 +10,7 @@ import {
   NativeModules,
   Alert,
   ActivityIndicator,
+  Text,
 } from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { LinearGradient } from "expo-linear-gradient"
@@ -23,7 +24,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated"
 import { Ionicons } from "@expo/vector-icons"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 
 import { ThemedText } from "@/components/ThemedText"
@@ -57,8 +58,12 @@ interface MagnetLink {
   size: string
 }
 
+// Default placeholder image to use when poster is empty
+const DEFAULT_POSTER = "https://via.placeholder.com/300x450?text=No+Poster"
+
 export default function MovieDetailScreen() {
-  const { id } = useLocalSearchParams()
+  const params = useLocalSearchParams()
+  const { id } = params
   const router = useRouter()
   const [movie, setMovie] = useState<Movie | null>(null)
   const [loading, setLoading] = useState(true)
@@ -74,6 +79,13 @@ export default function MovieDetailScreen() {
   const { download, pauseDownload, resumeDownload, removeDownload } = useDownload(downloadId)
 
   useEffect(() => {
+    // Debug log to see what's happening
+    console.log("Movie Detail Screen Mounted")
+    console.log("Movie ID:", id)
+    console.log("Route params:", params)
+  }, [id, params])
+
+  useEffect(() => {
     // Fetch movie details
     fetchMovieDetails()
     // Check if this movie is already downloaded
@@ -81,12 +93,12 @@ export default function MovieDetailScreen() {
   }, [id])
 
   // Fix the issue with movie details not loading correctly
-
-  // 1. Update the fetchMovieDetails function to better handle URL construction and errors
-  const fetchMovieDetails = async () => {
+  const fetchMovieDetails = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
+
+      console.log(`Fetching movie details for ID: ${id}`)
 
       // First, try to find the movie in the recent movies list on the homepage
       const mainPageUrl = "https://www.5movierulz.prof/"
@@ -103,15 +115,17 @@ export default function MovieDetailScreen() {
       const html = await response.text()
 
       // Extract movie details from the homepage's recent movies section
-      const movieMatch = html.match(new RegExp(`<a[^>]*href="([^"]*${id}[^"]*)"[^>]*>([^<]+)<\/a>`, "i"))
+      // Look for movie-watch-online-free-{id}.html pattern
+      const movieMatch = html.match(
+        new RegExp(`<a[^>]*href="([^"]*movie-watch-online-free-${id}[^"]*)"[^>]*>([^<]+)<\/a>`, "i"),
+      )
 
       if (movieMatch) {
         const movieUrl = movieMatch[1]
         console.log(`Found movie link on homepage: ${movieUrl}`)
 
         // Now fetch the movie details page
-        const movieProxyUrl = `https://corsproxy.io/?${encodeURIComponent(movieUrl)}`
-        const movieResponse = await fetch(movieProxyUrl)
+        const movieResponse = await fetch(movieUrl)
 
         if (!movieResponse.ok) {
           throw new Error(`Failed to fetch movie details: ${movieResponse.status} ${movieResponse.statusText}`)
@@ -180,7 +194,7 @@ export default function MovieDetailScreen() {
                 title,
                 year,
                 director: "Unknown",
-                poster: "",
+                poster: DEFAULT_POSTER, // Use default poster
                 description: "Movie details could not be loaded. Please try again later.",
                 rating: "N/A",
                 duration: "N/A",
@@ -241,7 +255,7 @@ export default function MovieDetailScreen() {
       setError(`Failed to load movie details: ${err.message}`)
       setLoading(false)
     }
-  }
+  }, [id])
 
   // 2. Improve the parseMovieDetails function to handle different HTML structures
   const parseMovieDetails = (html: string): Movie => {
@@ -252,7 +266,8 @@ export default function MovieDetailScreen() {
         html.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*wp-post-image[^"]*"/i) ||
         html.match(/<img[^>]*src="([^"]+)"[^>]*alt="[^"]*"/i)
 
-      const poster = posterMatch ? posterMatch[1] : ""
+      // Use a default poster if none is found
+      const poster = posterMatch && posterMatch[1] ? posterMatch[1] : DEFAULT_POSTER
       console.log("Poster URL:", poster)
 
       // Extract title
@@ -263,7 +278,7 @@ export default function MovieDetailScreen() {
 
       const fullTitle = titleMatch ? titleMatch[1].replace("MovieRulz", "").trim() : "Unknown Movie"
 
-      // Extract year from title
+      // Extract year from title - fix the regex to match (2025) format
       const yearMatch = fullTitle.match(/$$(\d{4})$$/)
       const year = yearMatch ? yearMatch[1] : "2025"
 
@@ -349,7 +364,7 @@ export default function MovieDetailScreen() {
         title: "Unknown Movie",
         year: "2025",
         director: "Unknown",
-        poster: "",
+        poster: DEFAULT_POSTER, // Use default poster
         description: "Failed to load movie details.",
         rating: "N/A",
         duration: "N/A",
@@ -501,6 +516,8 @@ export default function MovieDetailScreen() {
     return (
       <View style={styles.errorContainer}>
         <ThemedText>Movie not found</ThemedText>
+        <Text style={styles.errorDetails}>Error: {error}</Text>
+        <Text style={styles.errorDetails}>ID: {id}</Text>
         <TouchableOpacity onPress={() => router.back()}>
           <ThemedText style={styles.backLink}>Go Back</ThemedText>
         </TouchableOpacity>
@@ -514,7 +531,11 @@ export default function MovieDetailScreen() {
 
       {/* Backdrop Image */}
       <View style={styles.backdropContainer}>
-        <Image source={{ uri: movie.backdrop || movie.poster }} style={styles.backdrop} />
+        <Image
+          source={{ uri: movie.backdrop || movie.poster || DEFAULT_POSTER }}
+          style={styles.backdrop}
+          defaultSource={require("@/assets/images/icon.png")}
+        />
         <LinearGradient colors={["transparent", "rgba(0,0,0,0.8)", "#000"]} style={styles.backdropGradient} />
       </View>
 
@@ -530,7 +551,11 @@ export default function MovieDetailScreen() {
           {/* Movie Poster and Basic Info */}
           <View style={styles.headerRow}>
             <Animated.View entering={FadeInLeft.delay(200).springify()} style={styles.posterContainer}>
-              <Image source={{ uri: movie.poster }} style={styles.poster} />
+              <Image
+                source={{ uri: movie.poster || DEFAULT_POSTER }}
+                style={styles.poster}
+                defaultSource={require("@/assets/images/icon.png")}
+              />
             </Animated.View>
 
             <Animated.View entering={FadeIn.delay(400).springify()} style={styles.basicInfo}>
@@ -749,6 +774,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
+  },
+  errorDetails: {
+    color: "#ff6b6b",
+    marginTop: 10,
+    fontSize: 14,
   },
   backLink: {
     marginTop: 20,

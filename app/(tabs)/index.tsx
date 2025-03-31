@@ -262,8 +262,19 @@ export default function HomeScreen() {
 
   const handleMoviePress = (movieId) => {
     console.log(`Navigating to movie: ${movieId}`)
+
+    // Make sure we're using the correct ID format
+    // The ID should be just the number, not the full URL
+    const numericId =
+      typeof movieId === "string" && movieId.includes("-") ? movieId.split("-").pop().replace(".html", "") : movieId
+
+    console.log(`Extracted numeric ID: ${numericId}`)
+
     // Use the correct path format for the movies route
-    router.push(`/(movies)/${movieId}`)
+    router.push({
+      pathname: `/(movies)/${numericId}`,
+      params: { id: numericId },
+    })
   }
 
   const renderMovie = ({ item, index }) => (
