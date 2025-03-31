@@ -1,7 +1,13 @@
 # Movie Rulz Torrent Downloader
 
-![Preview Image 1](preview1.png)
-![Preview Image 2](preview2.png)
+
+[MovieRulz-TorrentDownloader.apk](assets/20250331_155814_app-release.apk)
+
+![](assets/20250331_155326_1.jpg)
+
+![](assets/20250331_155449_2.jpg)
+
+![](assets/20250331_155647_3.jpg)
 
 Movie Rulz Torrent Downloader is a cutting-edge torrent client built with a combination of Kotlin, React Native, Expo, and jlibtorrent. This project leverages the jlibtorrent JNI bindings to provide a seamless torrent downloading experience across various Android architectures.
 
@@ -36,15 +42,16 @@ implementation files("libs/jlibtorrent-android-x86-${jlibtorrent_version}.jar")
 implementation files("libs/jlibtorrent-android-x86_64-${jlibtorrent_version}.jar")
 ```
 
-
 This configuration ensures that all required jlibtorrent jars are included in your project build.
 
 ### Main Application Setup
 
 In your `MainApplication.kt`, import the torrent package by adding:
+
 ```
 packages.add
 ```
+
 Additionally, in the `torrent/TorrentModule.kt`, import all the necessary libraries. This Kotlin module implements the torrent functionality for the client.
 
 ### Building the Project
