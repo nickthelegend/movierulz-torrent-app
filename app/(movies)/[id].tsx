@@ -9,6 +9,7 @@ import {
   Dimensions,
   NativeModules,
   Alert,
+  ActivityIndicator,
 } from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { LinearGradient } from "expo-linear-gradient"
@@ -32,125 +33,334 @@ import type { DownloadModel } from "@/utils/downloadManager"
 
 const { TorrentModule } = NativeModules
 
-// Sample movie data - in a real app, this would come from an API
-const MOVIES = [
-  {
-    id: "1",
-    title: "Inception",
-    year: "2010",
-    director: "Christopher Nolan",
-    poster: "https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_.jpg",
-    backdrop:
-      "https://m.media-amazon.com/images/M/MV5BMjE0NGIwM2EtZjQxZi00ZTE5LWExN2MtNDBlMjY1ZmZkYjU3XkEyXkFqcGdeQXVyNjMwNzk3Mjk@._V1_.jpg",
-    description:
-      "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.",
-    rating: "8.8",
-    duration: "148 min",
-    genre: "Action, Adventure, Sci-Fi",
-    cast: "Leonardo DiCaprio, Joseph Gordon-Levitt, Elliot Page",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "2",
-    title: "The Dark Knight",
-    year: "2008",
-    director: "Christopher Nolan",
-    poster: "https://m.media-amazon.com/images/M/MV5BMTMxNTMwODM0NF5BMl5BanBnXkFtZTcwODAyMTk2Mw@@._V1_.jpg",
-    backdrop: "https://m.media-amazon.com/images/M/MV5BMTM5MjIxMTQ5MV5BMl5BanBnXkFtZTcwNDEyMzU5Mg@@._V1_.jpg",
-    description:
-      "When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.",
-    rating: "9.0",
-    duration: "152 min",
-    genre: "Action, Crime, Drama",
-    cast: "Christian Bale, Heath Ledger, Aaron Eckhart",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "3",
-    title: "Interstellar",
-    year: "2014",
-    director: "Christopher Nolan",
-    poster:
-      "https://m.media-amazon.com/images/M/MV5BZjdkOTU3MDktN2IxOS00OGEyLWFmMjktY2FiMmZkNWIyODZiXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_.jpg",
-    backdrop: "https://m.media-amazon.com/images/M/MV5BMjA3NTEwOTMxMV5BMl5BanBnXkFtZTgwMjMyODgxMzE@._V1_.jpg",
-    description: "A team of explorers travel through a wormhole in space in an attempt to ensure humanity's survival.",
-    rating: "8.6",
-    duration: "169 min",
-    genre: "Adventure, Drama, Sci-Fi",
-    cast: "Matthew McConaughey, Anne Hathaway, Jessica Chastain",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "4",
-    title: "Pulp Fiction",
-    year: "1994",
-    director: "Quentin Tarantino",
-    poster:
-      "https://m.media-amazon.com/images/M/MV5BNGNhMDIzZTUtNTBlZi00MTRlLWFjM2ItYzViMjE3YzI5MjljXkEyXkFqcGdeQXVyNzkwMjQ5NzM@._V1_.jpg",
-    backdrop: "https://m.media-amazon.com/images/M/MV5BNTY1MzgzOTYxNV5BMl5BanBnXkFtZTcwMDQwMTQ0NA@@._V1_.jpg",
-    description:
-      "The lives of two mob hitmen, a boxer, a gangster and his wife, and a pair of diner bandits intertwine in four tales of violence and redemption.",
-    rating: "8.9",
-    duration: "154 min",
-    genre: "Crime, Drama",
-    cast: "John Travolta, Uma Thurman, Samuel L. Jackson",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "5",
-    title: "The Matrix",
-    year: "1999",
-    director: "Lana Wachowski, Lilly Wachowski",
-    poster:
-      "https://m.media-amazon.com/images/M/MV5BNzQzOTk3OTAtNDQ0Zi00ZTVkLWI0MTEtMDllZjNkYzNjNTc4L2ltYWdlXkEyXkFqcGdeQXVyNjU0OTQ0OTY@._V1_.jpg",
-    backdrop: "https://m.media-amazon.com/images/M/MV5BNzM4OTkzMjcxOF5BMl5BanBnXkFtZTgwMzQxMTgyMjE@._V1_.jpg",
-    description:
-      "A computer hacker learns from mysterious rebels about the true nature of his reality and his role in the war against its controllers.",
-    rating: "8.7",
-    duration: "136 min",
-    genre: "Action, Sci-Fi",
-    cast: "Keanu Reeves, Laurence Fishburne, Carrie-Anne Moss",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "6",
-    title: "Parasite",
-    year: "2019",
-    director: "Bong Joon Ho",
-    poster:
-      "https://m.media-amazon.com/images/M/MV5BYWZjMjk3ZTItODQ2ZC00NTY5LWE0ZDYtZTI3MjcwN2Q5NTVkXkEyXkFqcGdeQXVyODk4OTc3MTY@._V1_.jpg",
-    backdrop:
-      "https://m.media-amazon.com/images/M/MV5BYWZjMjk3ZTItODQ2ZC00NTY5LWE0ZDYtZTI3MjcwN2Q5NTVkXkEyXkFqcGdeQXVyODk4OTc3MTY@._V1_.jpg",
-    description:
-      "Greed and class discrimination threaten the newly formed symbiotic relationship between the wealthy Park family and the destitute Kim clan.",
-    rating: "8.5",
-    duration: "132 min",
-    genre: "Drama, Thriller",
-    cast: "Song Kang-ho, Lee Sun-kyun, Cho Yeo-jeong",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-]
+// Movie interface
+interface Movie {
+  id: string
+  title: string
+  year: string
+  director: string
+  poster: string
+  backdrop?: string
+  description: string
+  rating: string
+  duration: string
+  genre: string
+  cast: string
+  quality: string
+  language: string
+  magnetLinks: MagnetLink[]
+}
 
-const { width, height } = Dimensions.get("window")
-const BACKDROP_HEIGHT = height * 0.5
+interface MagnetLink {
+  url: string
+  quality: string
+  size: string
+}
 
 export default function MovieDetailScreen() {
   const { id } = useLocalSearchParams()
   const router = useRouter()
-  const movie = MOVIES.find((m) => m.id === id)
+  const [movie, setMovie] = useState<Movie | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const buttonScale = useSharedValue(1)
   const [downloadId, setDownloadId] = useState("")
   const [isDownloading, setIsDownloading] = useState(false)
   const [isCheckingDownload, setIsCheckingDownload] = useState(true)
+  const [selectedMagnetLink, setSelectedMagnetLink] = useState<MagnetLink | null>(null)
 
   // Use the download hook if we have a downloadId
   const { download, pauseDownload, resumeDownload, removeDownload } = useDownload(downloadId)
 
   useEffect(() => {
+    // Fetch movie details
+    fetchMovieDetails()
     // Check if this movie is already downloaded
     checkIfDownloaded()
   }, [id])
+
+  // Fix the issue with movie details not loading correctly
+
+  // 1. Update the fetchMovieDetails function to better handle URL construction and errors
+  const fetchMovieDetails = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // First, try to find the movie in the recent movies list on the homepage
+      const mainPageUrl = "https://www.5movierulz.prof/"
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(mainPageUrl)}`
+
+      console.log(`Searching for movie with ID ${id} on homepage`)
+
+      const response = await fetch(proxyUrl)
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch homepage: ${response.status} ${response.statusText}`)
+      }
+
+      const html = await response.text()
+
+      // Extract movie details from the homepage's recent movies section
+      const movieMatch = html.match(new RegExp(`<a[^>]*href="([^"]*${id}[^"]*)"[^>]*>([^<]+)<\/a>`, "i"))
+
+      if (movieMatch) {
+        const movieUrl = movieMatch[1]
+        console.log(`Found movie link on homepage: ${movieUrl}`)
+
+        // Now fetch the movie details page
+        const movieProxyUrl = `https://corsproxy.io/?${encodeURIComponent(movieUrl)}`
+        const movieResponse = await fetch(movieProxyUrl)
+
+        if (!movieResponse.ok) {
+          throw new Error(`Failed to fetch movie details: ${movieResponse.status} ${movieResponse.statusText}`)
+        }
+
+        const movieHtml = await movieResponse.text()
+
+        // Parse the HTML to extract movie details
+        const movieData = parseMovieDetails(movieHtml)
+        setMovie(movieData)
+      } else {
+        // If we can't find the movie on the homepage, try to extract it from the sidebar
+        console.log("Movie not found in main content, checking sidebar")
+
+        // Look for the movie in the "Recent and Updated Movies" sidebar
+        const sidebarMovieMatch = html.match(
+          new RegExp(`<a[^>]*href="[^"]*movie-watch-online-free-${id}\\.html"[^>]*>([^<]+)<\/a>`, "i"),
+        )
+
+        if (sidebarMovieMatch) {
+          // Extract movie title from sidebar
+          const movieTitle = sidebarMovieMatch[1].trim()
+          console.log(`Found movie in sidebar: ${movieTitle}`)
+
+          // Search for this movie in the page content to get more details
+          const movieLinkMatch = html.match(
+            new RegExp(`<a[^>]*href="([^"]*movie-watch-online-free-${id}\\.html)"[^>]*>`, "i"),
+          )
+
+          if (movieLinkMatch) {
+            const movieUrl = movieLinkMatch[1]
+            console.log(`Found movie URL: ${movieUrl}`)
+
+            // Fetch the movie details page
+            const movieProxyUrl = `https://corsproxy.io/?${encodeURIComponent(movieUrl)}`
+            const movieResponse = await fetch(movieProxyUrl)
+
+            if (movieResponse.ok) {
+              const movieHtml = await movieResponse.text()
+              const movieData = parseMovieDetails(movieHtml)
+              setMovie(movieData)
+            } else {
+              // If we can't fetch the movie page, create a basic movie object from sidebar info
+              console.log("Could not fetch movie page, creating basic movie object")
+
+              // Extract year, quality, and language from title
+              const yearMatch = movieTitle.match(/$$(\d{4})$$/)
+              const year = yearMatch ? yearMatch[1] : "2025"
+
+              const qualityMatch = movieTitle.match(/$$.*?$$\s*(PREHD|HDRip|DVDScr|BRRip)/i)
+              const quality = qualityMatch ? qualityMatch[1] : "HD"
+
+              const languageMatch = movieTitle.match(/(Telugu|Tamil|Hindi|Malayalam|Kannada|English)/i)
+              const language = languageMatch ? languageMatch[1] : ""
+
+              // Clean up title
+              const title = movieTitle
+                .replace(/$$\d{4}$$/g, "")
+                .replace(/\s*(PREHD|HDRip|DVDScr|BRRip)\s*/gi, "")
+                .replace(/(Telugu|Tamil|Hindi|Malayalam|Kannada|English)/gi, "")
+                .replace(/Movie Watch Online Free/gi, "")
+                .trim()
+
+              setMovie({
+                id: id as string,
+                title,
+                year,
+                director: "Unknown",
+                poster: "",
+                description: "Movie details could not be loaded. Please try again later.",
+                rating: "N/A",
+                duration: "N/A",
+                genre: "N/A",
+                cast: "N/A",
+                quality,
+                language,
+                magnetLinks: [],
+              })
+            }
+          } else {
+            throw new Error("Movie link not found")
+          }
+        } else {
+          // If we still can't find the movie, try a direct approach with the ID
+          console.log("Movie not found in sidebar, trying direct approach with ID")
+
+          // Find any movie that might match this ID
+          const allMovieLinks = html.match(/<a[^>]*href="([^"]*movie-watch-online-free-[^"]*)"[^>]*>([^<]+)<\/a>/gi)
+
+          if (allMovieLinks && allMovieLinks.length > 0) {
+            // Get the first movie from the list as a fallback
+            const firstMovieMatch = allMovieLinks[0].match(/href="([^"]+)"[^>]*>([^<]+)<\/a>/i)
+
+            if (firstMovieMatch) {
+              const movieUrl = firstMovieMatch[1]
+              const movieTitle = firstMovieMatch[2].trim()
+
+              console.log(`Using fallback movie: ${movieTitle} (${movieUrl})`)
+
+              // Fetch the movie details page
+              const movieProxyUrl = `https://corsproxy.io/?${encodeURIComponent(movieUrl)}`
+              const movieResponse = await fetch(movieProxyUrl)
+
+              if (movieResponse.ok) {
+                const movieHtml = await movieResponse.text()
+                const movieData = parseMovieDetails(movieHtml)
+
+                // Override the ID to match what was requested
+                movieData.id = id as string
+
+                setMovie(movieData)
+              } else {
+                throw new Error("Failed to fetch fallback movie details")
+              }
+            } else {
+              throw new Error("Failed to parse fallback movie link")
+            }
+          } else {
+            throw new Error("No movies found on the homepage")
+          }
+        }
+      }
+
+      setLoading(false)
+    } catch (err) {
+      console.error("Error fetching movie details:", err)
+      setError(`Failed to load movie details: ${err.message}`)
+      setLoading(false)
+    }
+  }
+
+  // 2. Improve the parseMovieDetails function to handle different HTML structures
+  const parseMovieDetails = (html: string): Movie => {
+    try {
+      // Extract poster URL
+      const posterMatch =
+        html.match(/src="([^"]+)" class="attachment-post-thumbnail/i) ||
+        html.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*wp-post-image[^"]*"/i) ||
+        html.match(/<img[^>]*src="([^"]+)"[^>]*alt="[^"]*"/i)
+
+      const poster = posterMatch ? posterMatch[1] : ""
+      console.log("Poster URL:", poster)
+
+      // Extract title
+      const titleMatch =
+        html.match(/<strong>Watch ([^<]+)<\/strong>/i) ||
+        html.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
+        html.match(/<title>([^<]+)<\/title>/i)
+
+      const fullTitle = titleMatch ? titleMatch[1].replace("MovieRulz", "").trim() : "Unknown Movie"
+
+      // Extract year from title
+      const yearMatch = fullTitle.match(/$$(\d{4})$$/)
+      const year = yearMatch ? yearMatch[1] : "2025"
+
+      // Extract quality from title
+      const qualityMatch = fullTitle.match(/$$.*?$$\s*(PREHD|HDRip|DVDScr|BRRip)/i)
+      const quality = qualityMatch ? qualityMatch[1] : "HD"
+
+      // Extract language from title
+      const languageMatch = fullTitle.match(/(Telugu|Tamil|Hindi|Malayalam|Kannada|English)/i)
+      const language = languageMatch ? languageMatch[1] : "Telugu"
+
+      // Extract director
+      const directorMatch = html.match(/<b>Directed by:<\/b>\s*<a[^>]*>([^<]+)<\/a>/i)
+      const director = directorMatch ? directorMatch[1] : "Unknown"
+
+      // Extract cast
+      const castMatch = html.match(/<b>Starring by:<\/b>(.*?)<br><b>Genres:/is)
+      const castHtml = castMatch ? castMatch[1] : ""
+      const cast = castHtml.replace(/<[^>]*>/g, "").trim()
+
+      // Extract genres
+      const genreMatch = html.match(/<b>Genres:<\/b>(.*?)<br><b>Categories:/is)
+      const genreHtml = genreMatch ? genreMatch[1] : ""
+      const genre = genreHtml ? genreHtml.replace(/<[^>]*>/g, "").trim() : ""
+
+      // Extract description
+      const descriptionMatch =
+        html.match(/<p>\s*([^<]+?)<\/p>\s*<p><span style="color: #ff00ff;"><strong>.*?Download/is) ||
+        html.match(/<p>\s*([^<]+?)<\/p>/is)
+
+      const description = descriptionMatch ? descriptionMatch[1].trim() : "No description available."
+
+      // Extract magnet links
+      const magnetLinks: MagnetLink[] = []
+      const magnetMatches = html.matchAll(
+        /href="(magnet:[^"]+)"[^>]*><span>.*?<\/span>GET THIS TORRENT.*?<small>([^<]+)<\/small>/g,
+      )
+
+      for (const match of magnetMatches) {
+        const url = match[1]
+        const qualityInfo = match[2].trim()
+
+        // Parse quality info (e.g., "5.5 gb 1080p")
+        const parts = qualityInfo.split(" ")
+        const quality = parts.length > 1 ? parts[parts.length - 1] : "HD"
+        const size = parts.length > 1 ? `${parts[0]} ${parts[1]}` : "Unknown"
+
+        magnetLinks.push({
+          url,
+          quality,
+          size,
+        })
+      }
+
+      // Clean up title
+      const title = fullTitle
+        .replace(/$$\d{4}$$/g, "")
+        .replace(/\s*(PREHD|HDRip|DVDScr|BRRip)\s*/gi, "")
+        .replace(/(Telugu|Tamil|Hindi|Malayalam|Kannada|English)/gi, "")
+        .replace(/Movie Watch Online Free/gi, "")
+        .trim()
+
+      return {
+        id: id as string,
+        title,
+        year,
+        director,
+        poster,
+        backdrop: poster, // Use poster as backdrop if no separate backdrop image
+        description,
+        rating: "8.5", // Default rating
+        duration: "150 min", // Default duration
+        genre,
+        cast,
+        quality,
+        language,
+        magnetLinks,
+      }
+    } catch (err) {
+      console.error("Error parsing movie details:", err)
+      return {
+        id: id as string,
+        title: "Unknown Movie",
+        year: "2025",
+        director: "Unknown",
+        poster: "",
+        description: "Failed to load movie details.",
+        rating: "N/A",
+        duration: "N/A",
+        genre: "N/A",
+        cast: "N/A",
+        quality: "HD",
+        language: "Telugu",
+        magnetLinks: [],
+      }
+    }
+  }
 
   const checkIfDownloaded = async () => {
     try {
@@ -199,8 +409,8 @@ export default function MovieDetailScreen() {
   }
 
   const startDownload = async () => {
-    if (!movie || !movie.torrentUrl) {
-      Alert.alert("Error", "No torrent URL available")
+    if (!movie || !selectedMagnetLink) {
+      Alert.alert("Error", "Please select a torrent quality first")
       return
     }
 
@@ -209,7 +419,7 @@ export default function MovieDetailScreen() {
     try {
       // Use the DownloadManager to add a new download
       const downloadManager = DownloadManager.getInstance()
-      const newDownload = await downloadManager.add(movie.torrentUrl)
+      const newDownload = await downloadManager.add(selectedMagnetLink.url)
       setDownloadId(newDownload._id)
     } catch (error) {
       console.error("Error starting download:", error)
@@ -273,7 +483,21 @@ export default function MovieDetailScreen() {
     return `${formatBytes(bytesPerSecond)}/s`
   }
 
-  if (!movie) {
+  const handleSelectMagnetLink = (magnetLink: MagnetLink) => {
+    setSelectedMagnetLink(magnetLink)
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <LinearGradient colors={["#121212", "#1f1f1f", "#121212"]} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color="#6a11cb" />
+        <ThemedText style={styles.loadingText}>Loading movie details...</ThemedText>
+      </View>
+    )
+  }
+
+  if (error || !movie) {
     return (
       <View style={styles.errorContainer}>
         <ThemedText>Movie not found</ThemedText>
@@ -325,6 +549,29 @@ export default function MovieDetailScreen() {
               <ThemedText style={styles.genre}>{movie.genre}</ThemedText>
             </Animated.View>
           </View>
+
+          {/* Torrent Quality Selection */}
+          {!isDownloading && movie.magnetLinks.length > 0 && (
+            <Animated.View entering={FadeInDown.delay(500).springify()} style={styles.qualitySelectionContainer}>
+              <ThemedText style={styles.qualitySelectionTitle}>Select Quality:</ThemedText>
+              <View style={styles.qualityButtonsContainer}>
+                {movie.magnetLinks.map((link, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.qualityButton,
+                      selectedMagnetLink?.quality === link.quality ? styles.selectedQualityButton : null,
+                    ]}
+                    onPress={() => handleSelectMagnetLink(link)}
+                  >
+                    <ThemedText style={styles.qualityButtonText}>
+                      {link.quality} ({link.size})
+                    </ThemedText>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Animated.View>
+          )}
 
           {/* Watch/Download Button */}
           <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.watchButtonContainer}>
@@ -437,7 +684,8 @@ export default function MovieDetailScreen() {
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 onPress={startDownload}
-                style={styles.watchButtonTouchable}
+                disabled={!selectedMagnetLink}
+                style={[styles.watchButtonTouchable, !selectedMagnetLink && styles.disabledButton]}
               >
                 <Animated.View style={[styles.watchButton, buttonAnimatedStyle]}>
                   <LinearGradient
@@ -447,7 +695,9 @@ export default function MovieDetailScreen() {
                     style={styles.watchButtonGradient}
                   >
                     <Ionicons name="arrow-down-circle" size={24} color="white" style={styles.playIcon} />
-                    <ThemedText style={styles.watchButtonText}>Download Movie</ThemedText>
+                    <ThemedText style={styles.watchButtonText}>
+                      {selectedMagnetLink ? "Download Movie" : "Select Quality First"}
+                    </ThemedText>
                   </LinearGradient>
                 </Animated.View>
               </TouchableOpacity>
@@ -477,10 +727,22 @@ export default function MovieDetailScreen() {
   )
 }
 
+const { width, height } = Dimensions.get("window")
+const BACKDROP_HEIGHT = height * 0.5
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#fff",
   },
   errorContainer: {
     flex: 1,
@@ -596,6 +858,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.7)",
   },
+  qualitySelectionContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 15,
+  },
+  qualitySelectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 10,
+  },
+  qualityButtonsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  qualityButton: {
+    backgroundColor: "rgba(26, 26, 26, 0.8)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(106, 17, 203, 0.3)",
+  },
+  selectedQualityButton: {
+    backgroundColor: "rgba(106, 17, 203, 0.3)",
+    borderColor: "rgba(106, 17, 203, 0.7)",
+  },
+  qualityButtonText: {
+    fontSize: 12,
+    color: "#fff",
+    fontWeight: "bold",
+  },
   watchButtonContainer: {
     paddingHorizontal: 20,
     marginBottom: 25,
@@ -605,6 +899,9 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     overflow: "hidden",
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
   watchButton: {
     width: "100%",
@@ -733,14 +1030,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
     color: "#fff",
-  },
-  loadingContainer: {
-    padding: 20,
-    alignItems: "center",
-  },
-  loadingText: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.7)",
   },
 })
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   StyleSheet,
   FlatList,
@@ -10,6 +10,7 @@ import {
   StatusBar,
   Dimensions,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import { useRouter } from "expo-router"
@@ -25,82 +26,26 @@ import { Ionicons } from "@expo/vector-icons"
 
 import { ThemedText } from "@/components/ThemedText"
 
-// Sample movie data - in a real app, this would come from an API
-const MOVIES = [
-  {
-    id: "1",
-    title: "Inception",
-    year: "2010",
-    director: "Christopher Nolan",
-    poster: "https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_.jpg",
-    description:
-      "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.",
-    rating: "8.8",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "2",
-    title: "The Dark Knight",
-    year: "2008",
-    director: "Christopher Nolan",
-    poster: "https://m.media-amazon.com/images/M/MV5BMTMxNTMwODM0NF5BMl5BanBnXkFtZTcwODAyMTk2Mw@@._V1_.jpg",
-    description:
-      "When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.",
-    rating: "9.0",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "3",
-    title: "Interstellar",
-    year: "2014",
-    director: "Christopher Nolan",
-    poster:
-      "https://m.media-amazon.com/images/M/MV5BZjdkOTU3MDktN2IxOS00OGEyLWFmMjktY2FiMmZkNWIyODZiXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_.jpg",
-    description: "A team of explorers travel through a wormhole in space in an attempt to ensure humanity's survival.",
-    rating: "8.6",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "4",
-    title: "Pulp Fiction",
-    year: "1994",
-    director: "Quentin Tarantino",
-    poster:
-      "https://m.media-amazon.com/images/M/MV5BNGNhMDIzZTUtNTBlZi00MTRlLWFjM2ItYzViMjE3YzI5MjljXkEyXkFqcGdeQXVyNzkwMjQ5NzM@._V1_.jpg",
-    description:
-      "The lives of two mob hitmen, a boxer, a gangster and his wife, and a pair of diner bandits intertwine in four tales of violence and redemption.",
-    rating: "8.9",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "5",
-    title: "The Matrix",
-    year: "1999",
-    director: "Lana Wachowski, Lilly Wachowski",
-    poster:
-      "https://m.media-amazon.com/images/M/MV5BNzQzOTk3OTAtNDQ0Zi00ZTVkLWI0MTEtMDllZjNkYzNjNTc4L2ltYWdlXkEyXkFqcGdeQXVyNjU0OTQ0OTY@._V1_.jpg",
-    description:
-      "A computer hacker learns from mysterious rebels about the true nature of his reality and his role in the war against its controllers.",
-    rating: "8.7",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-  {
-    id: "6",
-    title: "Parasite",
-    year: "2019",
-    director: "Bong Joon Ho",
-    poster:
-      "https://m.media-amazon.com/images/M/MV5BYWZjMjk3ZTItODQ2ZC00NTY5LWE0ZDYtZTI3MjcwN2Q5NTVkXkEyXkFqcGdeQXVyODk4OTc3MTY@._V1_.jpg",
-    description:
-      "Greed and class discrimination threaten the newly formed symbiotic relationship between the wealthy Park family and the destitute Kim clan.",
-    rating: "8.5",
-    torrentUrl: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel",
-  },
-]
+// Movie interface
+interface Movie {
+  id: string
+  title: string
+  year: string
+  poster: string
+  quality: string
+  language: string
+  url: string
+}
 
 export default function HomeScreen() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [movies, setMovies] = useState<Movie[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [hasMorePages, setHasMorePages] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const scale = useSharedValue(1)
   const [dimensions, setDimensions] = useState(Dimensions.get("window"))
   const [isLandscape, setIsLandscape] = useState(dimensions.width > dimensions.height)
@@ -120,14 +65,173 @@ export default function HomeScreen() {
     return () => subscription.remove()
   }, [])
 
-  // Simulate loading
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false)
-    }, 1500)
+  // Parse HTML to extract movie data
+  const parseMovieHTML = (html: string) => {
+    try {
+      const movies: Movie[] = []
 
-    return () => clearTimeout(timer)
+      // Find all movie sections (featured, latest, etc.)
+      const allSections = html.match(/<ul>([\s\S]*?)<\/ul>/g)
+
+      if (!allSections || allSections.length === 0) {
+        console.log("No movie sections found")
+        return movies
+      }
+
+      // Process each section
+      allSections.forEach(section => {
+        // Extract movie blocks
+        const movieBlocks = section.match(/<li>\s*<div class="boxed film">([\s\S]*?)<\/div>\s*<\/li>/g)
+
+        if (!movieBlocks || movieBlocks.length === 0) {
+          return
+        }
+
+        // Process each movie block
+        movieBlocks.forEach((block, index) => {
+          try {
+            // Extract URL
+            const urlMatch = block.match(/href="([^"]+)"/i)
+            const url = urlMatch ? urlMatch[1] : ""
+
+            // Extract ID from URL
+            const idMatch = url.match(/\/([^/]+)\/movie-watch-online-free-(\d+)\.html/)
+            const id = idMatch ? idMatch[2] : `movie_${Math.random().toString(36).substring(2, 9)}`
+
+            // Extract poster URL
+            const posterMatch = block.match(/src="([^"]+)"/i)
+            const poster = posterMatch ? posterMatch[1] : ""
+
+            // Extract title and metadata
+            const titleMatch = block.match(/<p><b>([^<]+)<\/b><\/p>/i)
+            const fullTitle = titleMatch ? titleMatch[1].trim() : `Unknown Movie ${index + 1}`
+
+            // Extract year from title
+            const yearMatch = fullTitle.match(/$$(\d{4})$$/)
+            const year = yearMatch ? yearMatch[1] : ""
+
+            // Extract quality from title
+            const qualityMatch = fullTitle.match(/$$.*?$$\s*(PREHD|HDRip|DVDScr|BRRip)/i)
+            const quality = qualityMatch ? qualityMatch[1] : "HD"
+
+            // Extract language from title
+            const languageMatch = fullTitle.match(/(Telugu|Tamil|Hindi|Malayalam|Kannada|English)/i)
+            const language = languageMatch ? languageMatch[1] : ""
+
+            // Clean up title
+            const title = fullTitle
+              .replace(/$$\d{4}$$/g, "")
+              .replace(/\s*(PREHD|HDRip|DVDScr|BRRip)\s*/gi, "")
+              .replace(/(Telugu|Tamil|Hindi|Malayalam|Kannada|English)/gi, "")
+              .replace(/Movie Watch Online Free/gi, "")
+              .trim()
+
+            // Add movie to array if it has a poster and title
+            if (poster && title) {
+              movies.push({
+                id,
+                title,
+                year,
+                poster,
+                quality,
+                language,
+                url,
+              })
+            }
+          } catch (err) {
+            console.error(`Error parsing movie block:`, err)
+          }
+        })
+      })
+
+      return movies
+    } catch (err) {
+      console.error("Error extracting movies from HTML:", err)
+      return []
+    }
+  }
+
+  // Check if there are more pages
+  const checkForMorePages = (html: string): boolean => {
+    // Look for pagination links
+    const paginationMatch = html.match(/<div class="nav-newer"><a href="[^"]+">older -&gt;<\/a><\/div>/i)
+    return !!paginationMatch
+  }
+
+  // Fetch movies from the website
+  const fetchMovies = async (page = 1, append = false) => {
+    try {
+      if (page === 1) {
+        setLoading(true)
+      } else {
+        setLoadingMore(true)
+      }
+      setError(null)
+
+      // Construct the URL for the requested page
+      const url = page === 1 
+        ? 'https://www.5movierulz.prof/movies/' 
+        : `https://www.5movierulz.prof/movies/page/${page}/`
+      
+      console.log(`Fetching movies from: ${url}`)
+      
+      // Use a CORS proxy for development (in production, this should be handled by your backend)
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`
+      
+      const response = await fetch(proxyUrl)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`)
+      }
+      
+      const html = await response.text()
+      
+      // Parse the HTML to extract movie data
+      const movieData = parseMovieHTML(html)
+      const hasMore = checkForMorePages(html)
+      
+      console.log(`Extracted ${movieData.length} movies from page ${page}`)
+      console.log(`Has more pages: ${hasMore}`)
+      
+      if (append) {
+        setMovies(prevMovies => {
+          // Filter out duplicates by ID
+          const newMovies = movieData.filter(newMovie => 
+            !prevMovies.some(existingMovie => existingMovie.id === newMovie.id)
+          )
+          return [...prevMovies, ...newMovies]
+        })
+      } else {
+        setMovies(movieData)
+      }
+      
+      setHasMorePages(hasMore)
+      setCurrentPage(page)
+    } catch (err) {
+      console.error("Error fetching movies:", err)
+      setError(`Failed to load movies: ${err.message}`)
+    } finally {
+      setLoading(false)
+      setLoadingMore(false)
+      setRefreshing(false)
+    }
+  }
+
+  // Initial fetch
+  useEffect(() => {
+    fetchMovies(1, false)
   }, [])
+
+  const onRefresh = () => {
+    setRefreshing(true)
+    fetchMovies(1, false)
+  }
+
+  const loadMoreMovies = () => {
+    if (hasMorePages && !loadingMore) {
+      fetchMovies(currentPage + 1, true)
+    }
+  }
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
@@ -145,7 +249,7 @@ export default function HomeScreen() {
 
   const renderMovie = ({ item, index }) => (
     <Animated.View
-      entering={FadeInDown.delay(index * 100).springify()}
+      entering={FadeInDown.delay(index % 8 * 100).springify()}
       style={[styles.movieContainer, { width: itemWidth }]}
     >
       <TouchableOpacity
@@ -156,17 +260,24 @@ export default function HomeScreen() {
         style={[styles.movieTouchable, { width: itemWidth, height: itemHeight }]}
       >
         <Animated.View style={[styles.movieCard, animatedStyle]}>
-          <Image source={{ uri: item.poster }} style={styles.poster} />
+          <Image
+            source={{ uri: item.poster }}
+            style={styles.poster}
+            defaultSource={require("@/assets/images/icon.png")}
+          />
           <LinearGradient colors={["transparent", "rgba(0,0,0,0.8)", "#000"]} style={styles.gradientOverlay} />
           <View style={styles.movieInfo}>
-            <ThemedText type="title" style={styles.title}>
+            <ThemedText type="title" style={styles.title} numberOfLines={1}>
               {item.title}
             </ThemedText>
             <View style={styles.detailsRow}>
               <ThemedText style={styles.year}>{item.year}</ThemedText>
-              <View style={styles.ratingContainer}>
-                <ThemedText style={styles.rating}>★ {item.rating}</ThemedText>
+              <View style={styles.qualityContainer}>
+                <ThemedText style={styles.quality}>{item.quality}</ThemedText>
               </View>
+            </View>
+            <View style={styles.languageContainer}>
+              <ThemedText style={styles.language}>{item.language}</ThemedText>
             </View>
           </View>
         </Animated.View>
@@ -174,7 +285,18 @@ export default function HomeScreen() {
     </Animated.View>
   )
 
-  if (loading) {
+  const renderFooter = () => {
+    if (!loadingMore) return null
+    
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="large" color="#6a11cb" />
+        <ThemedText style={styles.loadingMoreText}>Loading more movies...</ThemedText>
+      </View>
+    )
+  }
+
+  if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
         <LinearGradient colors={["#121212", "#1f1f1f", "#121212"]} style={StyleSheet.absoluteFill} />
@@ -200,9 +322,9 @@ export default function HomeScreen() {
             <View style={styles.headerContent}>
               <View>
                 <ThemedText type="title" style={styles.headerTitle}>
-                  Movie Stream
+                  MovieRulz
                 </ThemedText>
-                <ThemedText style={styles.headerSubtitle}>Discover & Watch</ThemedText>
+                <ThemedText style={styles.headerSubtitle}>Watch & Download Movies</ThemedText>
               </View>
 
               {/* Downloads Button */}
@@ -222,16 +344,55 @@ export default function HomeScreen() {
         </BlurView>
       </Animated.View>
 
-      <FlatList
-        key={`grid-${numColumns}`} // Force re-render when columns change
-        data={MOVIES}
-        renderItem={renderMovie}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        numColumns={numColumns}
-        columnWrapperStyle={styles.columnWrapper}
-      />
+      {error ? (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={64} color="#6a11cb" />
+          <ThemedText style={styles.errorText}>{error}</ThemedText>
+          <TouchableOpacity style={styles.retryButton} onPress={() => fetchMovies(1, false)}>
+            <LinearGradient
+              colors={["#6a11cb", "#2575fc"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.retryButtonGradient}
+            >
+              <Ionicons name="refresh" size={18} color="white" style={styles.retryIcon} />
+              <ThemedText style={styles.retryText}>Retry</ThemedText>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          key={`grid-${numColumns}`} // Force re-render when columns change
+          data={movies}
+          renderItem={renderMovie}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          numColumns={numColumns}
+          columnWrapperStyle={styles.columnWrapper}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#6a11cb"]} tintColor="#6a11cb" />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="film-outline" size={64} color="#6a11cb" />
+              <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+            </View>
+          }
+          ListFooterComponent={renderFooter}
+          onEndReached={loadMoreMovies}
+          onEndReachedThreshold={0.5}
+        />
+      )}
+
+      {/* Page Indicator */}
+      {movies.length > 0 && (
+        <View style={styles.pageIndicator}>
+          <BlurView intensity={30} tint="dark" style={styles.pageIndicatorBlur}>
+            <ThemedText style={styles.pageIndicatorText}>Page {currentPage}</ThemedText>
+          </BlurView>
+        </View>
+      )}
     </View>
   )
 }
@@ -359,21 +520,103 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 4,
   },
   year: {
     fontSize: 12,
     color: "rgba(255, 255, 255, 0.8)",
   },
-  ratingContainer: {
+  qualityContainer: {
     backgroundColor: "rgba(106, 17, 203, 0.7)",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
   },
-  rating: {
+  quality: {
     fontSize: 10,
     fontWeight: "bold",
     color: "#fff",
   },
+  languageContainer: {
+    backgroundColor: "rgba(37, 117, 252, 0.7)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+  language: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "rgba(255, 255, 255, 0.8)",
+    textAlign: "center",
+    marginVertical: 20,
+  },
+  retryButton: {
+    borderRadius: 20,
+    overflow: "hidden",
+    marginTop: 10,
+  },
+  retryButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  retryIcon: {
+    marginRight: 8,
+  },
+  retryText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+    height: 300,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "rgba(255, 255, 255, 0.8)",
+    marginTop: 20,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.7)",
+    marginTop: 10,
+  },
+  pageIndicator: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+  },
+  pageIndicatorBlur: {
+    borderRadius: 15,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  pageIndicatorText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "white",
+  },
 })
-
