@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   StyleSheet,
   FlatList,
@@ -49,6 +49,7 @@ export default function HomeScreen() {
   const scale = useSharedValue(1)
   const [dimensions, setDimensions] = useState(Dimensions.get("window"))
   const [isLandscape, setIsLandscape] = useState(dimensions.width > dimensions.height)
+  const flatListRef = useRef(null)
 
   // Calculate grid dimensions based on orientation
   const numColumns = isLandscape ? 4 : 2
@@ -79,7 +80,7 @@ export default function HomeScreen() {
       }
 
       // Process each section
-      allSections.forEach(section => {
+      allSections.forEach((section) => {
         // Extract movie blocks
         const movieBlocks = section.match(/<li>\s*<div class="boxed film">([\s\S]*?)<\/div>\s*<\/li>/g)
 
@@ -169,42 +170,41 @@ export default function HomeScreen() {
       setError(null)
 
       // Construct the URL for the requested page
-      const url = page === 1 
-        ? 'https://www.5movierulz.prof/movies/' 
-        : `https://www.5movierulz.prof/movies/page/${page}/`
-      
+      const url =
+        page === 1 ? "https://www.5movierulz.prof/movies/" : `https://www.5movierulz.prof/movies/page/${page}/`
+
       console.log(`Fetching movies from: ${url}`)
-      
+
       // Use a CORS proxy for development (in production, this should be handled by your backend)
       const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`
-      
+
       const response = await fetch(proxyUrl)
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`)
       }
-      
+
       const html = await response.text()
-      
+
       // Parse the HTML to extract movie data
       const movieData = parseMovieHTML(html)
       const hasMore = checkForMorePages(html)
-      
+
       console.log(`Extracted ${movieData.length} movies from page ${page}`)
       console.log(`Has more pages: ${hasMore}`)
-      
+
       if (append) {
-        setMovies(prevMovies => {
+        setMovies((prevMovies) => {
           // Filter out duplicates by ID
-          const newMovies = movieData.filter(newMovie => 
-            !prevMovies.some(existingMovie => existingMovie.id === newMovie.id)
+          const newMovies = movieData.filter(
+            (newMovie) => !prevMovies.some((existingMovie) => existingMovie.id === newMovie.id),
           )
           return [...prevMovies, ...newMovies]
         })
       } else {
         setMovies(movieData)
       }
-      
+
       setHasMorePages(hasMore)
       setCurrentPage(page)
     } catch (err) {
@@ -233,6 +233,19 @@ export default function HomeScreen() {
     }
   }
 
+  const goToNextPage = () => {
+    if (hasMorePages && !loadingMore) {
+      const nextPage = currentPage + 1
+      console.log(`Navigating to page ${nextPage}`)
+      fetchMovies(nextPage, false)
+
+      // Scroll to top
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: true })
+      }
+    }
+  }
+
   const animatedStyle = useAnimatedStyle(() => {
     return {
       transform: [{ scale: scale.value }],
@@ -247,16 +260,22 @@ export default function HomeScreen() {
     scale.value = withSpring(1)
   }
 
+  const handleMoviePress = (movieId) => {
+    console.log(`Navigating to movie: ${movieId}`)
+    // Use the correct path format for the movies route
+    router.push(`/(movies)/${movieId}`)
+  }
+
   const renderMovie = ({ item, index }) => (
     <Animated.View
-      entering={FadeInDown.delay(index % 8 * 100).springify()}
+      entering={FadeInDown.delay((index % 8) * 100).springify()}
       style={[styles.movieContainer, { width: itemWidth }]}
     >
       <TouchableOpacity
         activeOpacity={0.9}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        onPress={() => router.push(`/(movies)/${item.id}`)}
+        onPress={() => handleMoviePress(item.id)}
         style={[styles.movieTouchable, { width: itemWidth, height: itemHeight }]}
       >
         <Animated.View style={[styles.movieCard, animatedStyle]}>
@@ -287,7 +306,7 @@ export default function HomeScreen() {
 
   const renderFooter = () => {
     if (!loadingMore) return null
-    
+
     return (
       <View style={styles.footerLoader}>
         <ActivityIndicator size="large" color="#6a11cb" />
@@ -327,16 +346,20 @@ export default function HomeScreen() {
                 <ThemedText style={styles.headerSubtitle}>Watch & Download Movies</ThemedText>
               </View>
 
-              {/* Downloads Button */}
-              <TouchableOpacity style={styles.downloadsButton} onPress={() => router.push("/downloads")}>
+              {/* Next Page Button */}
+              <TouchableOpacity
+                style={styles.nextPageButton}
+                onPress={goToNextPage}
+                disabled={!hasMorePages || loadingMore}
+              >
                 <LinearGradient
                   colors={["#6a11cb", "#2575fc"]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  style={styles.downloadsButtonGradient}
+                  style={styles.nextPageButtonGradient}
                 >
-                  <Ionicons name="download" size={18} color="white" style={styles.downloadsIcon} />
-                  <ThemedText style={styles.downloadsText}>Downloads</ThemedText>
+                  <ThemedText style={styles.nextPageText}>Next Page</ThemedText>
+                  <Ionicons name="arrow-forward" size={18} color="white" style={styles.nextPageIcon} />
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -362,6 +385,7 @@ export default function HomeScreen() {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           key={`grid-${numColumns}`} // Force re-render when columns change
           data={movies}
           renderItem={renderMovie}
@@ -401,6 +425,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
+    paddingBottom: 80, // Add padding for the tab bar
   },
   loadingContainer: {
     flex: 1,
@@ -441,21 +466,21 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.8)",
     marginTop: 5,
   },
-  downloadsButton: {
+  nextPageButton: {
     borderRadius: 20,
     overflow: "hidden",
   },
-  downloadsButtonGradient: {
+  nextPageButtonGradient: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 20,
   },
-  downloadsIcon: {
-    marginRight: 5,
+  nextPageIcon: {
+    marginLeft: 5,
   },
-  downloadsText: {
+  nextPageText: {
     color: "white",
     fontWeight: "bold",
     fontSize: 14,
@@ -605,7 +630,7 @@ const styles = StyleSheet.create({
   },
   pageIndicator: {
     position: "absolute",
-    bottom: 20,
+    bottom: 90, // Adjusted to be above the tab bar
     right: 20,
   },
   pageIndicatorBlur: {
@@ -620,3 +645,4 @@ const styles = StyleSheet.create({
     color: "white",
   },
 })
+
