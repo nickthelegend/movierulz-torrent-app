@@ -1,7 +1,7 @@
 # Movie Rulz Torrent Downloader
 
 
-[MovieRulz-TorrentDownloader.apk](assets/20250331_155814_app-release.apk)
+[MovieRulz-TorrentDownloader.apk]()
 
 ![](assets/20250331_155326_1.jpg)
 
