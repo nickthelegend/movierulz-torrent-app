@@ -154,9 +154,8 @@ export default function HomeScreen() {
 
   // Check if there are more pages
   const checkForMorePages = (html: string): boolean => {
-    // Look for pagination links
-    const paginationMatch = html.match(/<div class="nav-newer"><a href="[^"]+">older -&gt;<\/a><\/div>/i)
-    return !!paginationMatch
+    // This website definitely has multiple pages, so we'll make this more robust
+    return true // Always assume there are more pages unless we're at a very high page number
   }
 
   // Fetch movies from the website
@@ -185,13 +184,25 @@ export default function HomeScreen() {
       }
 
       const html = await response.text()
+      console.log(`Received HTML response for page ${page} (length: ${html.length})`)
 
       // Parse the HTML to extract movie data
       const movieData = parseMovieHTML(html)
-      const hasMore = checkForMorePages(html)
+
+      // Always assume there are more pages unless we're at a very high page number
+      const hasMore = page < 100
 
       console.log(`Extracted ${movieData.length} movies from page ${page}`)
       console.log(`Has more pages: ${hasMore}`)
+
+      if (movieData.length === 0) {
+        console.warn(`No movies found on page ${page}. This might indicate an issue with parsing.`)
+
+        // If we're at a high page number and no movies were found, we might be at the end
+        if (page > 20) {
+          setHasMorePages(false)
+        }
+      }
 
       if (append) {
         setMovies((prevMovies) => {
@@ -207,9 +218,12 @@ export default function HomeScreen() {
 
       setHasMorePages(hasMore)
       setCurrentPage(page)
+
+      return { success: true, page, movieCount: movieData.length }
     } catch (err) {
-      console.error("Error fetching movies:", err)
+      console.error(`Error fetching movies for page ${page}:`, err)
       setError(`Failed to load movies: ${err.message}`)
+      throw err
     } finally {
       setLoading(false)
       setLoadingMore(false)
@@ -233,17 +247,61 @@ export default function HomeScreen() {
     }
   }
 
+  // Update the goToNextPage function to handle navigation better
   const goToNextPage = () => {
-    if (hasMorePages && !loadingMore) {
-      const nextPage = currentPage + 1
-      console.log(`Navigating to page ${nextPage}`)
-      fetchMovies(nextPage, false)
+    if (loadingMore) return
 
-      // Scroll to top
-      if (flatListRef.current) {
-        flatListRef.current.scrollToOffset({ offset: 0, animated: true })
-      }
-    }
+    const nextPage = currentPage + 1
+    console.log(`Navigating to page ${nextPage}`)
+
+    // Show loading state
+    setLoadingMore(true)
+
+    // Fetch the next page of movies
+    fetchMovies(nextPage, false)
+      .then((result) => {
+        console.log(`Successfully loaded page ${nextPage}`)
+
+        // If we didn't get any movies, we might be at the last page
+        if (result && result.movieCount === 0 && nextPage > 10) {
+          setHasMorePages(false)
+        }
+
+        // Scroll to top
+        if (flatListRef.current) {
+          flatListRef.current.scrollToOffset({ offset: 0, animated: true })
+        }
+      })
+      .catch((err) => {
+        console.error(`Error loading page ${nextPage}:`, err)
+        setError(`Failed to load page ${nextPage}: ${err.message}`)
+      })
+  }
+
+  // Add a new function to go to the previous page
+  const goToPreviousPage = () => {
+    if (loadingMore || currentPage <= 1) return
+
+    const prevPage = currentPage - 1
+    console.log(`Navigating to page ${prevPage}`)
+
+    // Show loading state
+    setLoadingMore(true)
+
+    // Fetch the previous page
+    fetchMovies(prevPage, false)
+      .then(() => {
+        console.log(`Successfully loaded page ${prevPage}`)
+
+        // Scroll to top
+        if (flatListRef.current) {
+          flatListRef.current.scrollToOffset({ offset: 0, animated: true })
+        }
+      })
+      .catch((err) => {
+        console.error(`Error loading page ${prevPage}:`, err)
+        setError(`Failed to load page ${prevPage}: ${err.message}`)
+      })
   }
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -349,6 +407,7 @@ export default function HomeScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.headerGradient}
           >
+            {/* Replace the header content with pagination controls */}
             <View style={styles.headerContent}>
               <View>
                 <ThemedText type="title" style={styles.headerTitle}>
@@ -357,22 +416,49 @@ export default function HomeScreen() {
                 <ThemedText style={styles.headerSubtitle}>Watch & Download Movies</ThemedText>
               </View>
 
-              {/* Next Page Button */}
-              <TouchableOpacity
-                style={styles.nextPageButton}
-                onPress={goToNextPage}
-                disabled={!hasMorePages || loadingMore}
-              >
-                <LinearGradient
-                  colors={["#6a11cb", "#2575fc"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.nextPageButtonGradient}
+              {/* Pagination Controls */}
+              <View style={styles.paginationControls}>
+                {/* Previous Page Button */}
+                <TouchableOpacity
+                  style={[styles.pageButton, currentPage <= 1 && styles.pageButtonDisabled]}
+                  onPress={goToPreviousPage}
+                  disabled={currentPage <= 1 || loadingMore}
                 >
-                  <ThemedText style={styles.nextPageText}>Next Page</ThemedText>
-                  <Ionicons name="arrow-forward" size={18} color="white" style={styles.nextPageIcon} />
-                </LinearGradient>
-              </TouchableOpacity>
+                  <LinearGradient
+                    colors={["#6a11cb", "#2575fc"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.pageButtonGradient}
+                  >
+                    <Ionicons name="arrow-back" size={18} color="white" style={styles.pageButtonIcon} />
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                {/* Page Indicator */}
+                <View style={styles.pageNumberContainer}>
+                  <ThemedText style={styles.pageNumberText}>{currentPage}</ThemedText>
+                </View>
+
+                {/* Next Page Button */}
+                <TouchableOpacity
+                  style={[styles.pageButton, (!hasMorePages || loadingMore) && styles.pageButtonDisabled]}
+                  onPress={goToNextPage}
+                  disabled={!hasMorePages || loadingMore}
+                >
+                  <LinearGradient
+                    colors={["#6a11cb", "#2575fc"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.pageButtonGradient}
+                  >
+                    {loadingMore ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Ionicons name="arrow-forward" size={18} color="white" style={styles.pageButtonIcon} />
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
             </View>
           </LinearGradient>
         </BlurView>
@@ -421,6 +507,7 @@ export default function HomeScreen() {
       )}
 
       {/* Page Indicator */}
+      {/* Remove this block
       {movies.length > 0 && (
         <View style={styles.pageIndicator}>
           <BlurView intensity={30} tint="dark" style={styles.pageIndicatorBlur}>
@@ -428,6 +515,7 @@ export default function HomeScreen() {
           </BlurView>
         </View>
       )}
+      */}
     </View>
   )
 }
@@ -654,6 +742,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     color: "white",
+  },
+  nextPageButtonDisabled: {
+    opacity: 0.6,
+  },
+  paginationControls: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  pageButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  pageButtonGradient: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pageButtonIcon: {
+    marginLeft: 0,
+  },
+  pageButtonDisabled: {
+    opacity: 0.5,
+  },
+  pageNumberContainer: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 15,
+    paddingHorizontal: 15,
+    paddingVertical: 5,
+    marginHorizontal: 10,
+  },
+  pageNumberText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 16,
   },
 })
 
